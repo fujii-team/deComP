@@ -14,10 +14,6 @@ matrix:
     env: CONDA_ENV=py27-min
   - python: 3.6
     env: CONDA_ENV=py36
-  - python: 3.6
-    env: CONDA_ENV=py36
-  - python: 3.6
-    env: CONDA_ENV=py36-cupy
 
 before_install:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
@@ -35,16 +31,9 @@ before_install:
 install:
   - conda env create --file ci/requirements-$CONDA_ENV.yml
   - source activate test_env
-  # cloning cupy manually here
-  - if [[ "$CONDA_ENV" == "py36-cupy" ]]; then
-      cd ../;
-      mkdir git clone https://github.com/cupy/cupy;
-      cd cupy;
-      python setup.py install --cupy-no-cuda;
-    fi
-  - python setup.py
+  - python setup.py install
 script:
-  - py.test xarray --cov=cupy --cov-report term-missing --verbose
+  - py.test --verbose
 
 after_success:
   - coveralls

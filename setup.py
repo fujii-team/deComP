@@ -31,7 +31,7 @@ setup(name='decomp',
       py_modules=['decomp.__init__', 'decomp.utils.__init__'],
       test_suite='tests',
       install_requires="""
-        numpy>=1.13
+        numpy>=1.11
         """,
       classifiers=['License :: OSI Approved :: BSD License',
                    'Natural Language :: English',

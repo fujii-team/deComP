@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 from decomp.utils.cp_compat import numpy_or_cupy as xp
 from decomp import lasso
-from testings import allclose
+from .testings import allclose
 
 
 class TestUtils(unittest.TestCase):

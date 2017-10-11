@@ -1,4 +1,6 @@
 # deComP
+[![Travis Status for fujii-team/deComP](https://travis-ci.org/fujii-team/deComP.svg?branch=master)](https://travis-ci.org/fujii-team/deComP)
+
 
 Python Library for Large Scale Matrix Decomposition with CuPy compatibility.
 
