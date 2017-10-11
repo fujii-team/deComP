@@ -1,7 +1,7 @@
 import unittest
 from decomp.utils.cp_compat import numpy_or_cupy as xp
-from testings import allclose
 import decomp.dictionary_learning as dic
+from .testings import allclose
 
 
 class TestFloat(unittest.TestCase):

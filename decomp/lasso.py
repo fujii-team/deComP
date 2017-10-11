@@ -57,7 +57,7 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
         For ista and fista, see
             Beck, A., & Teboulle, M. (n.d.).
             A Fast Iterative Shrinkage-Thresholding Algorithm for Linear
-            Inverse Problems *, 2(1), 183–202.
+            Inverse Problems *, 2(1), 183-202.
             http://doi.org/10.1137/080716542
         for the details.
     """
@@ -84,7 +84,7 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
     if y.ndim == 1 and x0 is None:
         x0 = xp.zeros(A.shape[0], dtype=y.dtype)
     elif y.ndim >= 2 and x0 is None:
-        x0 = xp.zeros((*y.shape[:-1], A.shape[0]), dtype=y.dtype)
+        x0 = xp.zeros(y.shape[:-1] + (A.shape[0], ), dtype=y.dtype)
 
     if method == 'ista':
         for i in range(maxiter):

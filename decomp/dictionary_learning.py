@@ -52,7 +52,7 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     rng = np.random.RandomState(random_seed)
     if x is None:
-        x = xp.zeros((*y.shape[:-1], D.shape[0]), dtype=y.dtype)
+        x = xp.zeros(y.shape[:-1] + (D.shape[0], ), dtype=y.dtype)
     else:
         x = x
 
