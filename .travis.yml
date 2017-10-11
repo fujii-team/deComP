@@ -35,8 +35,7 @@ before_install:
 install:
   - conda env create --file ci/requirements-$CONDA_ENV.yml
   - source activate test_env
-  # scipy should not have been installed, but it's included in older versions of
-  # the conda pandas package
+  # cloning cupy manually here
   - if [[ "$CONDA_ENV" == "py36-cupy" ]]; then
       cd ../;
       mkdir git clone https://github.com/cupy/cupy;
