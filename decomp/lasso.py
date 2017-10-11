@@ -30,7 +30,8 @@ def soft_threshold(x, y):
     return xp.maximum(x, 0.0) * sign
 
 
-def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
+def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000,
+          mask=None):
     """
     Solve Lasso problem
 
@@ -62,10 +63,7 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
         for the details.
     """
     # Check all the class are numpy or cupy
-    if x0 is None:
-        xp = get_array_module(y, A)
-    else:
-        xp = get_array_module(y, A, x0)
+    xp = get_array_module(y, A, x0, mask)
 
     available_methods = ['ista', 'fista']
     if method not in available_methods:
@@ -88,7 +86,7 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
 
     if method == 'ista':
         for i in range(maxiter):
-            x0_new = _solve_ista(yAt, AAt, x0, L, alpha, xp=xp)
+            x0_new = _ista_func(yAt, AAt, x0, L, alpha, xp=xp)
             if xp.max(xp.abs(x0_new - x0)) < tol:
                 return i, x0_new
             else:

@@ -61,10 +61,17 @@ class TestLasso(unittest.TestCase):
         self.x_true = self.randn(5) * xp.rint(self.rng.uniform(size=5))
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(10) * 0.1
+        self.mask = xp.rint(self.rng.uniform(size=100).resize(10, 10))
 
     def test_ista(self):
         it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
                             method='ista', maxiter=1000)
+        self.assertTrue(it < 1000 - 1)
+        self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
+
+    def test_ista_mask(self):
+        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                            method='ista', maxiter=1000, mask=self.mask)
         self.assertTrue(it < 1000 - 1)
         self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
 
