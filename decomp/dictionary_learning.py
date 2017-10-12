@@ -87,22 +87,17 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
                 A = beta * A + xp.dot(x_minibatch.T, x_minibatch)
                 B = beta * B + xp.dot(x_minibatch.T, y_minibatch)
 
-            flag = []
-            for k in range(D.shape[0]):
-                uk = (B[k] - xp.dot(A[k], D)) / (A[k, k] + _JITTER) + D[k]
+            Adiag = xp.expand_dims(xp.diagonal(A), -1)
+            U = (B - xp.dot(A, D)) / (Adiag + _JITTER) + D
+            if y.dtype.kind == 'c':
+                Unorm = xp.sum(xp.real(xp.conj(U) * U), axis=-1, keepdims=True)
+            else:
+                Unorm = xp.sum(U * U, axis=-1, keepdims=True)
 
-                if y.dtype.kind == 'c':
-                    Unorm = xp.sum(xp.real(xp.conj(uk) * uk))
-                else:
-                    Unorm = xp.sum(uk * uk)
-
-                d_new = uk / xp.maximum(Unorm, 1.0)
-
-                flag.append(xp.max(xp.abs(D[k] - d_new)) < tol)
-                D[k] = d_new
-
-            if all(flag):
+            D_new = U / xp.maximum(Unorm, 1.0)
+            if xp.max(xp.abs(D - D_new)) < tol:
                 return it, D, x
+            D = D_new
 
         except KeyboardInterrupt:
             return it, D, x
