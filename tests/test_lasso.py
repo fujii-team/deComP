@@ -61,7 +61,7 @@ class TestLasso(unittest.TestCase):
         self.x_true = self.randn(5) * xp.rint(self.rng.uniform(size=5))
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(10) * 0.1
-        self.mask = xp.rint(self.rng.uniform(size=100).resize(10, 10))
+        self.mask = xp.rint(self.rng.uniform(0.49, 1, size=10))
 
     def test_ista(self):
         it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
@@ -73,7 +73,7 @@ class TestLasso(unittest.TestCase):
         it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
                             method='ista', maxiter=1000, mask=self.mask)
         self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
+        self.assert_minimum(x, alpha=1.0, tol=1.0e-5, mask=self.mask)
 
     def test_fista(self):
         it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
@@ -81,16 +81,23 @@ class TestLasso(unittest.TestCase):
         self.assertTrue(it < 1000 - 1)
         self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
 
-    def error(self, x, alpha):
+    def test_fista_mask(self):
+        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                            method='fista', maxiter=1000, mask=self.mask)
+        self.assertTrue(it < 1000 - 1)
+        self.assert_minimum(x, alpha=1.0, tol=1.0e-5, mask=self.mask)
+
+    def error(self, x, alpha, mask=None):
+        mask = xp.ones_like(self.y) if mask is None else mask
         loss = xp.sum(xp.square(xp.abs(
-            self.y - xp.tensordot(x, self.A, axes=1))))
+                self.y - xp.tensordot(x, self.A, axes=1)) * mask))
         return 0.5 / alpha * loss + xp.sum(xp.abs(x))
 
-    def assert_minimum(self, x, alpha, tol, n=3):
-        loss = self.error(x, alpha)
+    def assert_minimum(self, x, alpha, tol, n=3, mask=None):
+        loss = self.error(x, alpha, mask)
         for _ in range(n):
             dx = self.randn(*x.shape) * tol
-            self.assertTrue(loss < self.error(x + dx, alpha))
+            self.assertTrue(loss < self.error(x + dx, alpha, mask))
 
 
 class TestLassoMatrix(TestLasso):
@@ -101,6 +108,9 @@ class TestLassoMatrix(TestLasso):
         self.x_true = x_true.reshape(11, 5)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(11, 10) * 0.1
+        v = self.rng.uniform(0.49, 1.0, size=110)
+        v.resize(11, 10)
+        self.mask = xp.rint(v)
 
 
 class TestLassoTensor(TestLasso):
@@ -111,6 +121,9 @@ class TestLassoTensor(TestLasso):
         self.x_true = x_true.reshape(12, 11, 5)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(12, 11, 10) * 0.1
+        v = self.rng.uniform(0.49, 1, size=1320)
+        v.resize(12, 11, 10)
+        self.mask = xp.rint(v)
 
 
 class TestLasso_complex(TestLasso):
