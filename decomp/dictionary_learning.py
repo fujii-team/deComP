@@ -45,10 +45,7 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
         The missing point should be zero. One for otherwise.
     """
     # Check all the class are numpy or cupy
-    if x is None:
-        xp = get_array_module(y, D)
-    else:
-        xp = get_array_module(y, D, x)
+    xp = get_array_module(y, D, x)
 
     rng = np.random.RandomState(random_seed)
     if x is None:
@@ -66,10 +63,31 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
             y_minibatch = y[indexes]
 
             # lasso
-            it2, x_minibatch = lasso.solve(y_minibatch, D, alpha,
-                                           x0=x_minibatch, tol=tol,
-                                           method=lasso_method,
-                                           maxiter=lasso_iter)
+            if mask is None:
+                if lasso_method == 'ista':
+                    it2, x_minibatch = lasso.solve_ista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, xp=xp)
+                elif lasso_method == 'fista':
+                    it2, x_minibatc = lasso.solve_fista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, xp=xp)
+                else:
+                    raise NotImplementedError
+            else:
+                mask_minibatch = mask[indexes]
+
+                if lasso_method == 'ista':
+                    it2, x_minibatch = lasso.solve_ista_mask(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, mask=mask_minibatch, xp=xp)
+                elif lasso_method == 'fista':
+                    it2, x_minibatc = lasso.solve_fista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, mask=mask_minibatch, xp=xp)
+                else:
+                    raise NotImplementedError
+
             x[indexes] = x_minibatch
 
             # Dictionary update
@@ -80,12 +98,12 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
             else:
                 beta = 1.0
 
+            xT = x_minibatch.T
             if y.dtype.kind == 'c':
-                A = beta * A + xp.dot(xp.conj(x_minibatch.T), x_minibatch)
-                B = beta * B + xp.dot(xp.conj(x_minibatch.T), y_minibatch)
-            else:
-                A = beta * A + xp.dot(x_minibatch.T, x_minibatch)
-                B = beta * B + xp.dot(x_minibatch.T, y_minibatch)
+                xT = xp.conj(xT)
+
+            A = beta * A + xp.dot(xT, x_minibatch)
+            B = beta * B + xp.dot(xT, y_minibatch)
 
             Adiag = xp.expand_dims(xp.diagonal(A), -1)
             U = (B - xp.dot(A, D)) / (Adiag + _JITTER) + D
