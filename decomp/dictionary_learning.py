@@ -1,5 +1,6 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
+from .utils.dtype import float_type
 from . import lasso
 
 
@@ -43,6 +44,15 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     mask: an array-like of Boolean (or integer, float)
         The missing point should be zero. One for otherwise.
+
+
+    Notes
+    -----
+    This is essentially implements
+    Mensch ARTHURMENSCH, A., Mairal JULIENMAIRAL, J., & Thirion BETRANDTHIRION,
+    B. (n.d.).
+    Dictionary Learning for Massive Matrix Factorization Gaël Varoquaux.
+    Retrieved from http://proceedings.mlr.press/v48/mensch16.pdf
     """
     # Check all the class are numpy or cupy
     xp = get_array_module(y, D, x)
@@ -55,6 +65,8 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     A = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
     B = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)
+    if mask is not None:
+        E = xp.zeros(D.shape[1], dtype=float_type(y.dtype))
 
     for it in range(1, maxiter):
         try:
@@ -74,9 +86,9 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
                         maxiter=lasso_iter, xp=xp)
                 else:
                     raise NotImplementedError
+
             else:
                 mask_minibatch = mask[indexes]
-
                 if lasso_method == 'ista':
                     it2, x_minibatch = lasso.solve_ista_mask(
                         y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
@@ -91,19 +103,19 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
             x[indexes] = x_minibatch
 
             # Dictionary update
-            if minibatch > 1:
-                theta = (it * minibatch if it < minibatch
-                         else minibatch**2 + it - minibatch)
-                beta = (theta + 1.0 - minibatch) / (theta + 1.0)
-            else:
-                beta = 1.0
-
             xT = x_minibatch.T
             if y.dtype.kind == 'c':
                 xT = xp.conj(xT)
 
-            A = beta * A + xp.dot(xT, x_minibatch)
-            B = beta * B + xp.dot(xT, y_minibatch)
+            it_inv = 1.0 / it
+            A = (1.0 - it_inv) * A + it_inv * xp.dot(xT, x_minibatch)
+            if mask is None:
+                B = (1.0 - it_inv) * B + it_inv * xp.dot(xT, y_minibatch)
+            else:
+                mask_sum = xp.sum(mask_minibatch, axis=0)
+                E = E + mask_sum
+                B = B + 1.0 / E * (xp.dot(xT, y_minibatch * mask_minibatch)
+                                   - mask_sum * B)
 
             Adiag = xp.expand_dims(xp.diagonal(A), -1)
             U = (B - xp.dot(A, D)) / (Adiag + _JITTER) + D

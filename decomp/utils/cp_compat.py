@@ -10,7 +10,7 @@ try:
                is not xp for x in arrays):
             raise TypeError("All the data types should be the same.")
 
-        warnings.warn('Using cupy as backend.', stacklevel=1)
+        warnings.warn('Using cupy as backend.')
         return xp
 
 except ImportError:
@@ -18,5 +18,5 @@ except ImportError:
     numpy_or_cupy = numpy
 
     def get_array_module(*arrays):
-        warnings.warn('Using numpy as backend.', stacklevel=1)
+        warnings.warn('Using numpy as backend.')
         return numpy
