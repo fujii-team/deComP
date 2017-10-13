@@ -98,8 +98,8 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000):
         w0 = x0
         beta = 1.0
         for i in range(maxiter):
-            x0_new = _solve_ista(yAt, AAt, w0, L, alpha)
-            if np.max(np.abs(x0_new - x0)) < tol:
+            x0_new = _solve_ista(yAt, AAt, w0, L, alpha, xp=xp)
+            if xp.max(xp.abs(x0_new - x0)) < tol:
                 return i, x0_new
             else:
                 beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
