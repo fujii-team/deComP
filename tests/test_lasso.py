@@ -88,7 +88,7 @@ class TestLasso(unittest.TestCase):
         self.assert_minimum(x, alpha=1.0, tol=1.0e-5, mask=self.mask)
 
     def error(self, x, alpha, mask=None):
-        mask = xp.ones_like(self.y) if mask is None else mask
+        mask = xp.ones(self.y.shape, dtype=float) if mask is None else mask
         loss = xp.sum(xp.square(xp.abs(
                 self.y - xp.tensordot(x, self.A, axes=1)) * mask))
         return 0.5 / alpha * loss + xp.sum(xp.abs(x))
@@ -108,8 +108,7 @@ class TestLassoMatrix(TestLasso):
         self.x_true = x_true.reshape(11, 5)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(11, 10) * 0.1
-        v = self.rng.uniform(0.49, 1.0, size=110)
-        v.resize(11, 10)
+        v = self.rng.uniform(0.49, 1.0, size=110).reshape(11, 10)
         self.mask = xp.rint(v)
 
 
@@ -121,8 +120,7 @@ class TestLassoTensor(TestLasso):
         self.x_true = x_true.reshape(12, 11, 5)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(12, 11, 10) * 0.1
-        v = self.rng.uniform(0.49, 1, size=1320)
-        v.resize(12, 11, 10)
+        v = self.rng.uniform(0.49, 1, size=1320).reshape(12, 11, 10)
         self.mask = xp.rint(v)
 
 

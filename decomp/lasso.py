@@ -124,10 +124,10 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     beta = 1.0
     for i in range(maxiter):
         x0_new = _update(yAt, AAt, w0, L, alpha, xp=xp)
-        if np.max(np.abs(x0_new - x0)) < tol:
+        if xp.max(xp.abs(x0_new - x0)) < tol:
             return i, x0_new
         else:
-            beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
+            beta_new = 0.5 * (1.0 + xp.sqrt(1.0 + 4.0 * beta * beta))
             w0 = x0_new + (beta - 1.0) / beta_new * (x0_new - x0)
             x0 = x0_new
             beta = beta_new
@@ -172,7 +172,7 @@ def solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     beta = 1.0
     for i in range(maxiter):
         x0_new = _update_w_mask(yAt, A, At, w0, L, alpha, mask=mask, xp=xp)
-        if np.max(np.abs(x0_new - x0)) < tol:
+        if xp.max(xp.abs(x0_new - x0)) < tol:
             return i, x0_new
         else:
             beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
