@@ -248,5 +248,13 @@ class TestLasso_equivalence(unittest.TestCase):
             self.assertTrue(allclose(x, self.mask_x, atol=1.0e-4))
 
 
+class TestLasso_equivalence_complex(TestLasso_equivalence):
+    """
+    All the methods should get the global minimum.
+    """
+    def randn(self, *shape):
+        return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
+
+
 if __name__ == '__main__':
     unittest.main()

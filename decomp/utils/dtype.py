@@ -13,8 +13,10 @@ def float_type(dtype):
     try:
         import cupy as cp
         if dtype is cp.complex64:
-            return cp.float32
+            return np.float32
         if dtype is cp.complex128:
-            return cp.float64
+            return np.float64
     except ImportError:
         pass
+
+    raise TypeError('Unsupported data type : ' + str(dtype))

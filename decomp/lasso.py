@@ -1,6 +1,7 @@
 import numpy as np
 import warnings
 from .utils.cp_compat import get_array_module
+from .utils.dtype import float_type
 from .utils import assertion
 
 
@@ -88,11 +89,13 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(available_methods), method))
 
-    return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None)
+    return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=mask)
 
 
 def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
-    """ fast path for lasso """
+    """ fast path for lasso, without default value setting and shape/dtype
+    assertions.
+    """
     if mask is None:
         if method == 'ista':
             return solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
@@ -219,7 +222,7 @@ def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp=np):
 def solve_cd(y, A, alpha, x, tol, maxiter, xp):
     """ Fast path to solve lasso by coordinate descent with mask """
     return solve_cd_mask(y, A, alpha, x, tol, maxiter,
-                         xp.ones(y.shape, xp.float), xp)
+                         xp.ones(y.shape, float_type(y.dtype)), xp)
 
 def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """
