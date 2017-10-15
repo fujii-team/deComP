@@ -2,6 +2,8 @@ import unittest
 import numpy as np
 from decomp.utils.cp_compat import numpy_or_cupy as xp
 from decomp import lasso
+from decomp.utils.exceptions import ShapeMismatchError, DtypeMismatchError
+
 from .testings import allclose
 
 
@@ -49,6 +51,72 @@ class TestUtils(unittest.TestCase):
         expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0)\
             * (np.sqrt(0.5) - np.sqrt(0.5) * 1.0j)
         self.assertTrue(allclose(actual, expected))
+
+
+class TestLassoError(unittest.TestCase):
+    """ Unit tests for """
+    def test_error_in_shape(self):
+        # with vector input
+        # wrong A shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(5), np.random.randn(3, 4), alpha=1.0)
+        # wrong x shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(5), np.random.randn(3, 5),
+                        x=np.random.randn(4), alpha=1.0)
+        # wrong mask shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(5), np.random.randn(3, 5),
+                        x=np.random.randn(3), alpha=1.0,
+                        mask=np.random.randn(4))
+
+        # with matrix input
+        # wrong A shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 5), np.random.randn(3, 4), alpha=1.0)
+        # wrong x shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 5), np.random.randn(3, 5),
+                        x=np.random.randn(1, 3), alpha=1.0)
+        # wrong mask shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 5), np.random.randn(3, 5),
+                        x=np.random.randn(2, 3), alpha=1.0,
+                        mask=np.random.randn(2, 4))
+
+        # with tensor input
+        # wrong A shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 4, 5),
+                        np.random.randn(3, 4), alpha=1.0)
+        # wrong x shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 4, 5), np.random.randn(3, 5),
+                        x=np.random.randn(2, 3, 3), alpha=1.0)
+        # wrong mask shape
+        with self.assertRaises(ShapeMismatchError):
+            lasso.solve(np.random.randn(2, 4, 5), np.random.randn(3, 5),
+                        x=np.random.randn(2, 4, 3), alpha=1.0,
+                        mask=np.random.randn(2, 4, 3))
+
+    def test_error_in_dtype(self):
+        # with vector input
+        # mismatch dtype
+        with self.assertRaises(DtypeMismatchError):
+            lasso.solve(np.random.randn(5).astype(float),
+                        np.random.randn(3, 4).astype(complex), alpha=1.0)
+        with self.assertRaises(DtypeMismatchError):
+            lasso.solve(np.random.randn(5).astype(float),
+                        np.random.randn(3, 4).astype(float), alpha=1.0,
+                        mask=np.random.randn(3, 4).astype(int))
+        with self.assertRaises(DtypeMismatchError):
+            lasso.solve(np.random.randn(5).astype(float),
+                        np.random.randn(3, 4).astype(float), alpha=1.0,
+                        mask=np.random.randn(3, 4).astype(complex))
+        # float64 and float32 are also incompatible
+        with self.assertRaises(DtypeMismatchError):
+            lasso.solve(np.random.randn(5).astype(np.float32),
+                        np.random.randn(3, 4).astype(np.float64), alpha=1.0)
 
 
 class TestLasso(unittest.TestCase):
