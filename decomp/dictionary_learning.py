@@ -1,5 +1,6 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
+from .utils.dtype import float_type
 from . import lasso
 
 
@@ -43,12 +44,18 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     mask: an array-like of Boolean (or integer, float)
         The missing point should be zero. One for otherwise.
+
+
+    Notes
+    -----
+    This is essentially implements
+    Mensch ARTHURMENSCH, A., Mairal JULIENMAIRAL, J., & Thirion BETRANDTHIRION,
+    B. (n.d.).
+    Dictionary Learning for Massive Matrix Factorization Gael Varoquaux.
+    Retrieved from http://proceedings.mlr.press/v48/mensch16.pdf
     """
     # Check all the class are numpy or cupy
-    if x is None:
-        xp = get_array_module(y, D)
-    else:
-        xp = get_array_module(y, D, x)
+    xp = get_array_module(y, D, x)
 
     rng = np.random.RandomState(random_seed)
     if x is None:
@@ -58,6 +65,8 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     A = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
     B = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)
+    if mask is not None:
+        E = xp.zeros(D.shape[1], dtype=float_type(y.dtype))
 
     for it in range(1, maxiter):
         try:
@@ -66,43 +75,59 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
             y_minibatch = y[indexes]
 
             # lasso
-            it2, x_minibatch = lasso.solve(y_minibatch, D, alpha,
-                                           x0=x_minibatch, tol=tol,
-                                           method=lasso_method,
-                                           maxiter=lasso_iter)
+            if mask is None:
+                if lasso_method == 'ista':
+                    it2, x_minibatch = lasso.solve_ista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, xp=xp)
+                elif lasso_method == 'fista':
+                    it2, x_minibatc = lasso.solve_fista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, xp=xp)
+                else:
+                    raise NotImplementedError
+
+            else:
+                mask_minibatch = mask[indexes]
+                if lasso_method == 'ista':
+                    it2, x_minibatch = lasso.solve_ista_mask(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, mask=mask_minibatch, xp=xp)
+                elif lasso_method == 'fista':
+                    it2, x_minibatc = lasso.solve_fista(
+                        y_minibatch, D, alpha, x0=x_minibatch, tol=tol,
+                        maxiter=lasso_iter, mask=mask_minibatch, xp=xp)
+                else:
+                    raise NotImplementedError
+
             x[indexes] = x_minibatch
 
             # Dictionary update
-            if minibatch > 1:
-                theta = (it * minibatch if it < minibatch
-                         else minibatch**2 + it - minibatch)
-                beta = (theta + 1.0 - minibatch) / (theta + 1.0)
-            else:
-                beta = 1.0
-
+            xT = x_minibatch.T
             if y.dtype.kind == 'c':
-                A = beta * A + xp.dot(xp.conj(x_minibatch.T), x_minibatch)
-                B = beta * B + xp.dot(xp.conj(x_minibatch.T), y_minibatch)
+                xT = xp.conj(xT)
+
+            it_inv = 1.0 / it
+            A = (1.0 - it_inv) * A + it_inv * xp.dot(xT, x_minibatch)
+            if mask is None:
+                B = (1.0 - it_inv) * B + it_inv * xp.dot(xT, y_minibatch)
             else:
-                A = beta * A + xp.dot(x_minibatch.T, x_minibatch)
-                B = beta * B + xp.dot(x_minibatch.T, y_minibatch)
+                mask_sum = xp.sum(mask_minibatch, axis=0)
+                E = E + mask_sum
+                B = B + 1.0 / E * (xp.dot(xT, y_minibatch * mask_minibatch)
+                                   - mask_sum * B)
 
-            flag = []
-            for k in range(D.shape[0]):
-                uk = (B[k] - xp.dot(A[k], D)) / (A[k, k] + _JITTER) + D[k]
+            Adiag = xp.expand_dims(xp.diagonal(A), -1)
+            U = (B - xp.dot(A, D)) / (Adiag + _JITTER) + D
+            if y.dtype.kind == 'c':
+                Unorm = xp.sum(xp.real(xp.conj(U) * U), axis=-1, keepdims=True)
+            else:
+                Unorm = xp.sum(U * U, axis=-1, keepdims=True)
 
-                if y.dtype.kind == 'c':
-                    Unorm = xp.sum(xp.real(xp.conj(uk) * uk))
-                else:
-                    Unorm = xp.sum(uk * uk)
-
-                d_new = uk / xp.maximum(Unorm, 1.0)
-
-                flag.append(xp.max(xp.abs(D[k] - d_new)) < tol)
-                D[k] = d_new
-
-            if all(flag):
+            D_new = U / xp.maximum(Unorm, 1.0)
+            if xp.max(xp.abs(D - D_new)) < tol:
                 return it, D, x
+            D = D_new
 
         except KeyboardInterrupt:
             return it, D, x

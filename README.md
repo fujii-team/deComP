@@ -23,6 +23,7 @@ Currently, we implemented
 + Dictionary Learning
 
 All the models support complex values as well as real values.
+It also supports missing values.
 
 
 ## Requirements
