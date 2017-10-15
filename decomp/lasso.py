@@ -96,7 +96,7 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
             return solve_fista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                xp=xp)
         elif method == 'cd':
-            return solve_cd(y, A, alpha, x0, tol=tol, maxiter=maxiter, xp=xp)
+            return solve_cd(y, A, alpha, x, tol=tol, maxiter=maxiter, xp=xp)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented.')
@@ -108,8 +108,8 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
             return solve_fista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                     mask=mask, xp=xp)
         elif method == 'cd':
-            return solve_cd_mask(y, A, alpha, x0, tol=tol, maxiter=maxiter,
-                                 xp=xp)
+            return solve_cd_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                 mask=mask, xp=xp)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
@@ -212,34 +212,26 @@ def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp=np):
 
 
 def solve_cd(y, A, alpha, x, tol, maxiter, xp):
+    """ Fast path to solve lasso by coordinate descent with mask """
+    return solve_cd_mask(y, A, alpha, x, tol, maxiter,
+                         xp.ones(y.shape, xp.float), xp)
+
+def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """
-    warnings.warn('Using coordinate descent for lasso problem. '
-                  'Possiblly quite slow because it cannot be parallelized.')
-
-    y_shape = y.shape
-    y = y.reshape(-1)
-    x_shape = x.shape
-    x = x.reshape(-1)
-
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
-    yAt = xp.tensordot(y, At, axes=1)
 
+    y = y * mask
     for i in range(maxiter):
         flags = []
-        for k in range(x.shape[0]):
-            x_new = soft_threshold(yAt[k] - xp.dot(x, AAt)[k], alpha)
-            x_new = x_new / AAt[k, k]
-            flags.append(xp.abs(x[k] - x_new) < tol)
-            x[k] = x_new
+        for k in range(x.shape[-1]):
+            xA = xp.tensordot(x, A, axes=1) * mask\
+                - xp.tensordot(x[:, k:k+1], A[k:k+1], axes=1)
+            x_new = xp.tensordot(y - xA, At[:, k], axes=1)
+            x_new = soft_threshold(x_new, alpha) / AAt[k, k]
+            flags.append(xp.max(xp.abs(x[:, k] - x_new)) < tol)
+            x[:, k] = x_new
 
         if all(flags):
-            return i, x.reshape(*x_shape)
-    return maxiter - 1, x.reshape(*x_shape)
-
-
-def solve_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
-    """ Fast path to solve lasso by coordinate descent with mask """
-    warnings.warn('Using coordinate descent for lasso problem. '
-                  'Possiblly quite slow because it cannot be parallelized.')
-    raise NotImplementedError
+            return i, x
+    return maxiter - 1, x

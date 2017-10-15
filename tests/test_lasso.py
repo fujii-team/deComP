@@ -217,24 +217,35 @@ class TestLasso_equivalence(unittest.TestCase):
     def setUp(self):
         self.rng = xp.random.RandomState(0)
         self.A = self.randn(5, 10)
-        self.x_true = self.randn(5) * xp.rint(self.rng.uniform(size=5))
+        x_true = self.randn(55) * xp.rint(self.rng.uniform(size=55))
+        self.x_true = x_true.reshape(11, 5)
         self.y = xp.dot(self.x_true,
-                        self.A) + self.randn(10) * 0.1
-        self.mask = xp.rint(self.rng.uniform(0.49, 1, size=10))
+                        self.A) + self.randn(11, 10) * 0.1
+        v = self.rng.uniform(0.4, 1.0, size=110).reshape(11, 10)
+        self.mask = xp.rint(v)
 
-        _, self.x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
-                                method='ista', maxiter=1000)
+        self.it, self.x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                                      method='ista', maxiter=1000)
+        self.mask_it, self.mask_x = lasso.solve(
+                    self.y, self.A, alpha=1.0, tol=1.0e-6,
+                    method='ista', maxiter=1000, mask=self.mask)
         self.methods = ['fista', 'cd']
 
     def test_compare(self):
-        print(self.x)
         for method in self.methods:
             it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
                                 method=method, maxiter=1000)
-            print(method)
-            print(x)
-            self.assertTrue(allclose(x, self.x, atol=1.0e-4))
             self.assertTrue(it < 1000 - 1)
+            self.assertTrue(it != self.it)
+            self.assertTrue(allclose(x, self.x, atol=1.0e-4))
+
+    def test_compare_mask(self):
+        for method in self.methods:
+            it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                                method=method, maxiter=1000, mask=self.mask)
+            self.assertTrue(it < 1000 - 1)
+            self.assertTrue(it != self.mask_it)
+            self.assertTrue(allclose(x, self.mask_x, atol=1.0e-4))
 
 
 if __name__ == '__main__':
