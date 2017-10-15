@@ -81,6 +81,11 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(available_methods), method))
 
+    return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None)
+
+
+def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
+    """ fast path for lasso """
     if mask is None:
         if method == 'ista':
             return solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
