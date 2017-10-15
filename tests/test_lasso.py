@@ -139,5 +139,35 @@ class TestLasso_complexTensor(TestLassoTensor):
         return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
 
 
+class TestLasso_equivalence(unittest.TestCase):
+    """
+    All the methods should get the global minimum.
+    """
+    def randn(self, *shape):
+        return self.rng.randn(*shape)
+
+    def setUp(self):
+        self.rng = xp.random.RandomState(0)
+        self.A = self.randn(5, 10)
+        self.x_true = self.randn(5) * xp.rint(self.rng.uniform(size=5))
+        self.y = xp.dot(self.x_true,
+                        self.A) + self.randn(10) * 0.1
+        self.mask = xp.rint(self.rng.uniform(0.49, 1, size=10))
+
+        _, self.x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                                method='ista', maxiter=1000)
+        self.methods = ['fista', 'cd']
+
+    def test_compare(self):
+        print(self.x)
+        for method in self.methods:
+            it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+                                method=method, maxiter=1000)
+            print(method)
+            print(x)
+            self.assertTrue(allclose(x, self.x, atol=1.0e-4))
+            self.assertTrue(it < 1000 - 1)
+
+
 if __name__ == '__main__':
     unittest.main()
