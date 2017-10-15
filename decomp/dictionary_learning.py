@@ -51,7 +51,7 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     This is essentially implements
     Mensch ARTHURMENSCH, A., Mairal JULIENMAIRAL, J., & Thirion BETRANDTHIRION,
     B. (n.d.).
-    Dictionary Learning for Massive Matrix Factorization Gaël Varoquaux.
+    Dictionary Learning for Massive Matrix Factorization Gael Varoquaux.
     Retrieved from http://proceedings.mlr.press/v48/mensch16.pdf
     """
     # Check all the class are numpy or cupy
