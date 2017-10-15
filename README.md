@@ -6,10 +6,12 @@ Python Library for Large Scale Matrix Decomposition with CuPy compatibility.
 
 ## What is deComP
 
-deComP is a python library for large scale matrix decomposition,
-designed to realize a maximum parallelism.
+deComP is a compilation of matrix decomposition algorithms,
+especially for large scale matrices.
 
-Our algorithms utilize numpy's parallelization capacity as much as possible.
+We compiled (and updated) several algorithms that utilizes numpy's
+parallelization capacity as much as possible.
+
 Furthermore, deComP is also compatible to
 [`CuPy`](https://github.com/cupy/cupy),
 which gives `numpy`-like interface for gpu computing.
