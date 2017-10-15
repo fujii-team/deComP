@@ -1,7 +1,7 @@
 import numpy as np
 from .exceptions import ShapeMismatchError, DtypeMismatchError
 
-def assert_shapes(name_x='x', name_y='y', axes=None, **arrays):
+def assert_shapes(x_name, x, y_name, y, axes=None):
     """
     Make sure the shapes of x and y are consistent.
     If axes==None, assert x.shape == y.shape
@@ -9,14 +9,7 @@ def assert_shapes(name_x='x', name_y='y', axes=None, **arrays):
         assert x.shape[-axes:] == y.shape[:axes]
     If axes is a list of integers, it makes sure
         x.shape[axes] == y.shape[axes]
-
-    Parameters
-    ----------
-    **arrays: Mapping from name to arrays.
     """
-    assert len(arrays.keys()) == 2
-
-    (x_name, x), (y_name, y) = arrays.items()
     if x is None or y is None:
         return
 

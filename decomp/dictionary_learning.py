@@ -63,9 +63,9 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
 
     assertion.assert_dtypes(y=y, D=D, x=x)
     assertion.assert_dtypes(mask=mask, dtypes='f')
-    assertion.assert_shapes(x=x, D=D, axes=1)
-    assertion.assert_shapes(y=y, D=D, axes=[-1])
-    assertion.assert_shapes(y=y, mask=mask)
+    assertion.assert_shapes('x', x, 'D', D, axes=1)
+    assertion.assert_shapes('y', y, 'D', D, axes=[-1])
+    assertion.assert_shapes('y', y, 'mask', mask)
 
     A = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
     B = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)

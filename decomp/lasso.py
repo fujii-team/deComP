@@ -71,10 +71,10 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
 
     assertion.assert_dtypes(y=y, A=A, x=x)
     assertion.assert_dtypes(mask=mask, dtypes='f')
-    assertion.assert_shapes(x=x, A=A, axes=1)
-    assertion.assert_shapes(y=y, x=x, axes=np.arange(x.ndim - 1).tolist())
-    assertion.assert_shapes(y=y, A=A, axes=[-1])
-    assertion.assert_shapes(y=y, mask=mask)
+    assertion.assert_shapes('x', x, 'A', A, axes=1)
+    assertion.assert_shapes('y', y, 'x', x, axes=np.arange(x.ndim - 1).tolist())
+    assertion.assert_shapes('y', y, 'A', A, axes=[-1])
+    assertion.assert_shapes('y', y, 'mask', mask)
 
     available_methods = ['ista', 'fista']
     if method not in available_methods:
