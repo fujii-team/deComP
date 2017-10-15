@@ -1,5 +1,6 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
+from .utils import assertion
 
 
 def soft_threshold(x, y):
@@ -30,7 +31,7 @@ def soft_threshold(x, y):
     return xp.maximum(x, 0.0) * sign
 
 
-def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000,
+def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
           mask=None):
     """
     Solve Lasso problem
@@ -50,8 +51,8 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000,
         A design matrix
     alpha: a positive float
         Regularization parameter
-    x0: array-like
-        An initial estimate of x
+    x: array-like
+        An initial estimate of x (optional)
     tol: a float
         Criterion to stop iteration
     method: string 'ista' | 'fista' | 'ista_mod' | 'fista_mod'
@@ -63,33 +64,38 @@ def solve(y, A, alpha, x0=None, tol=1.0e-3, method='ista', maxiter=1000,
         for the details.
     """
     # Check all the class are numpy or cupy
-    xp = get_array_module(y, A, x0, mask)
+    xp = get_array_module(y, A, x, mask)
+
+    if x is None:
+        x = xp.zeros(y.shape[:-1] + (A.shape[0], ), dtype=y.dtype)
+
+    assertion.assert_dtypes(y=y, A=A, x=x)
+    assertion.assert_dtypes(mask=mask, dtypes='f')
+    assertion.assert_shapes(x=x, A=A, axes=1)
+    assertion.assert_shapes(y=y, x=x, axes=np.arange(x.ndim - 1).tolist())
+    assertion.assert_shapes(y=y, A=A, axes=[-1])
+    assertion.assert_shapes(y=y, mask=mask)
 
     available_methods = ['ista', 'fista']
     if method not in available_methods:
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(available_methods), method))
 
-    if y.ndim == 1 and x0 is None:
-        x0 = xp.zeros(A.shape[0], dtype=y.dtype)
-    elif y.ndim >= 2 and x0 is None:
-        x0 = xp.zeros(y.shape[:-1] + (A.shape[0], ), dtype=y.dtype)
-
     if mask is None:
         if method == 'ista':
-            return solve_ista(y, A, alpha, x0, tol=tol, maxiter=maxiter,
+            return solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                               xp=xp)
         elif method == 'fista':
-            return solve_fista(y, A, alpha, x0, tol=tol, maxiter=maxiter,
+            return solve_fista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                xp=xp)
         else:
             raise NotImplementedError
     else:
         if method == 'ista':
-            return solve_ista_mask(y, A, alpha, x0, tol=tol, maxiter=maxiter,
+            return solve_ista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                    mask=mask, xp=xp)
         elif method == 'fista':
-            return solve_fista_mask(y, A, alpha, x0, tol=tol, maxiter=maxiter,
+            return solve_fista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                     mask=mask, xp=xp)
         else:
             raise NotImplementedError

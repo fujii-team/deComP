@@ -1,6 +1,7 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils.dtype import float_type
+from .utils import assertion
 from . import lasso
 
 
@@ -45,7 +46,6 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     mask: an array-like of Boolean (or integer, float)
         The missing point should be zero. One for otherwise.
 
-
     Notes
     -----
     This is essentially implements
@@ -60,8 +60,12 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     rng = np.random.RandomState(random_seed)
     if x is None:
         x = xp.zeros(y.shape[:-1] + (D.shape[0], ), dtype=y.dtype)
-    else:
-        x = x
+
+    assertion.assert_dtypes(y=y, D=D, x=x)
+    assertion.assert_dtypes(mask=mask, dtypes='f')
+    assertion.assert_shapes(x=x, D=D, axes=1)
+    assertion.assert_shapes(y=y, D=D, axes=[-1])
+    assertion.assert_shapes(y=y, mask=mask)
 
     A = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
     B = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)
