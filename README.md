@@ -21,8 +21,9 @@ which gives `numpy`-like interface for gpu computing.
 
 Currently, we implemented
 
-+ Lasso Regression
-+ Dictionary Learning
++ [Lasso Regression](decomp/lasso.py)
++ [Dictionary Learning](decomp/dictionary_learning.py)
++ [Non-negative Matrix Factorization](decomp/nmf.py)
 
 All the models support complex values as well as real values.
 It also supports missing values.
