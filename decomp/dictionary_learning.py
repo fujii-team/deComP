@@ -103,16 +103,16 @@ def solve_cd(y, D, alpha, x, tol, minibatch, maxiter, method,
 
     def update_block(D_old):
         # Original update logic
-        D = D_old.copy()
-        for k in range(D.shape[0]):
-            uk = (B[k] - xp.dot(A[k], D)) / (A[k, k] + _JITTER) + D[k]
+        D_new = D_old.copy()
+        for k in range(D_new.shape[0]):
+            uk = (B[k] - xp.dot(A[k], D)) / (A[k, k] + _JITTER) + D_new[k]
             # normalize
             if y.dtype.kind == 'c':
                 Unorm = xp.sum(xp.real(xp.conj(uk) * uk))
             else:
                 Unorm = xp.sum(uk * uk)
-            D[k] = uk / xp.maximum(Unorm, 1.0)
-        return D
+            D_new[k] = uk / xp.maximum(Unorm, 1.0)
+        return D_new
 
     def update_prallel(D):
         # Parallelized update logic
@@ -125,6 +125,7 @@ def solve_cd(y, D, alpha, x, tol, minibatch, maxiter, method,
             Unorm = xp.sum(U * U, axis=-1, keepdims=True)
         return U / xp.maximum(Unorm, 1.0)
 
+    # iteration loop
     for it in range(1, maxiter):
         try:
             indexes = minibatch_index(y.shape, minibatch, rng)

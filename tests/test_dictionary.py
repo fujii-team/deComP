@@ -116,13 +116,13 @@ class Test_method_equivalence(unittest.TestCase):
 
     def test_compare(self):
         it_base, D_base, _ = dic.solve(
-                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-6,
+                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
                 minibatch=10, method='parallel_cd',
                 maxiter=10000, lasso_method='ista', lasso_iter=10,
                 random_seed=0)
         for method in self.methods:
             it, D, x = dic.solve(
-                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-6,
+                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
                     minibatch=10, method=method,
                     maxiter=10000, lasso_method='ista', lasso_iter=10,
                     random_seed=0)
@@ -131,18 +131,18 @@ class Test_method_equivalence(unittest.TestCase):
 
     def test_compare_mask(self):
         it_base, D_base, _ = dic.solve(
-                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-6,
+                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
                 minibatch=10, method='parallel_cd',
                 maxiter=10000, lasso_method='ista', lasso_iter=10,
                 random_seed=0, mask=self.mask)
         for method in self.methods:
             it, D, x = dic.solve(
-                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-6,
+                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
                     minibatch=10, method=method,
                     maxiter=10000, lasso_method='ista', lasso_iter=10,
                     random_seed=0, mask=self.mask)
             self.assertTrue(it < 10000 - 1)
-            self.assertTrue(allclose(D_base, D, atol=1.0e-3))
+            self.assertTrue(allclose(D_base, D, atol=1.0e-4))
 
 
 if __name__ == '__main__':
