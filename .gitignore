@@ -41,9 +41,11 @@ nosetests.xml
 *.swp
 .DS_Store
 
-# xarray specific
+# setuptool specific
 doc/_build
 doc/generated
-xarray/version.py
 
 .ipynb_checkpoints
+
+# dropbox related things
+.dropbox.attr

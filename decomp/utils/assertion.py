@@ -16,7 +16,7 @@ def assert_shapes(x_name, x, y_name, y, axes=None):
     if axes is None:
         if x.shape != y.shape:
             raise ShapeMismatchError(
-                'Shapes of x and y should be identical. '
+                'Shapes of {0:s} and {2:s} should be identical. '
                 'Given {0:s}: {1:s} and {2:s}: {3:s}'.format(
                                 x_name, str(x.shape), y_name, str(y.shape)))
         return
@@ -40,6 +40,14 @@ def assert_shapes(x_name, x, y_name, y, axes=None):
         return
     raise TypeError('Argument axes is invalid, given ' + str(axes))
 
+
+def assert_ndim(x_name, x, ndim):
+    if x is None:
+        return
+    if x.ndim != ndim:
+        raise DimInvalidError('Dimension of {0:s} should be {1:d} but given '
+                              '{2:d}'.format(x_name, ndim, x.ndim))
+    return
 
 def assert_dtypes(dtypes='fc', **arrays):
     """

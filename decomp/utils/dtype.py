@@ -1,22 +1,13 @@
 import numpy as np
-
+from .exceptions import DtypeMismatchError
 
 def float_type(dtype):
     """ Convert to equivalent float type """
     if dtype.kind == 'f':
         return dtype
-    if dtype is np.complex64:
+    if dtype == np.complex64:
         return np.float32
-    if dtype is np.complex128:
+    if dtype == np.complex128:
         return np.float64
 
-    try:
-        import cupy as cp
-        if dtype is cp.complex64:
-            return np.float32
-        if dtype is cp.complex128:
-            return np.float64
-    except ImportError:
-        pass
-
-    raise TypeError('Unsupported data type : ' + str(dtype))
+    raise DtypeMismatchError('Invalid dtype is given: ' + str(dtype))
