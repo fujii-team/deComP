@@ -21,15 +21,15 @@ class TestFloat(unittest.TestCase):
 
     def test_run(self):
         D = self.D.copy()
-        it, D, x = nmf.solve(self.y, D, minibatch=1, maxiter=1000,
-                             tol=1.0e-6)
+        it, D, x = nmf.solve(self.y, D, minibatch=None, maxiter=1000,
+                             tol=1.0e-6, random_seed=0)
         self.assertTrue(it < 1000 - 1)
         self.assert_minimum(x, D, tol=1.0e-5, n=3)
 
     def test_run_minibatch(self):
         D = self.D.copy()
         it, D, x = nmf.solve(self.y, D, minibatch=10, maxiter=1000,
-                             tol=1.0e-6)
+                             tol=1.0e-6, random_seed=0)
         self.assertTrue(it < 1000 - 1)
         self.assert_minimum(x, D, tol=1.0e-5, n=3)
 
@@ -37,13 +37,13 @@ class TestFloat(unittest.TestCase):
         D = self.D.copy()
         y = self.mask * self.y
         it, D, x = nmf.solve(self.y, D, minibatch=10, maxiter=1000,
-                             tol=1.0e-6, mask=self.mask)
+                             tol=1.0e-6, mask=self.mask, random_seed=0)
         self.assertTrue(it < 1000 - 1)
         self.assert_minimum(x, D, tol=1.0e-5, n=3)
         # make sure that the solution is different from
         D = self.D.copy()
         it2, D2, x2 = nmf.solve(self.y, D, minibatch=10, maxiter=1000,
-                                tol=1.0e-6, mask=None)
+                                tol=1.0e-6, mask=None, random_seed=0)
         self.assertFalse(allclose(D, D2, atol=1.0e-4))
 
     def error(self, x, D, mask=None):

@@ -8,12 +8,7 @@ from .utils import assertion
 _JITTER = 1.0e-10
 
 
-def minibatch_index(shape, minibatch, rng):
-    """ Construct a minibatch index. """
-    return tuple([rng.randint(0, s, minibatch) for s in shape[:-1]])
-
-
-def solve(y, D, x=None, tol=1.0e-3, minibatch=1, maxiter=1000,
+def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000,
           method='multiplicative', mask=None, random_seed=None):
     """
     Non-negative matrix factrization.
