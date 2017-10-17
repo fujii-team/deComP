@@ -97,5 +97,53 @@ class TestComplex(TestFloat):
         return 0.5 / alpha * loss + xp.sum(xp.abs(x))
 
 
+class Test_method_equivalence(unittest.TestCase):
+    def randn(self, *shape):
+        return self.rng.randn(*shape)
+
+    def setUp(self):
+        self.rng = xp.random.RandomState(0)
+        self.Dtrue = self.randn(3, 5)
+        xtrue = self.randn(101, 3)
+        self.xtrue = xtrue * self.rng.uniform(size=303).reshape(101, 3)
+
+        self.y = xp.dot(self.xtrue, self.Dtrue) + self.randn(101, 5) * 0.1
+        self.D = self.Dtrue + self.randn(*self.Dtrue.shape) * 0.3
+        self.mask = xp.rint(
+                self.rng.uniform(0.4, 1, size=505)).reshape(101, 5)
+        self.alpha = 1.0
+        self.methods = ['block_cd']
+
+    def test_compare(self):
+        it_base, D_base, _ = dic.solve(
+                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
+                minibatch=10, method='parallel_cd',
+                maxiter=10000, lasso_method='ista', lasso_iter=10,
+                random_seed=0)
+        for method in self.methods:
+            it, D, x = dic.solve(
+                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
+                    minibatch=10, method=method,
+                    maxiter=10000, lasso_method='ista', lasso_iter=10,
+                    random_seed=0)
+            self.assertTrue(it < 10000 - 1)
+            self.assertTrue(allclose(D_base, D, atol=1.0e-4))
+
+    def test_compare_mask(self):
+        it_base, D_base, _ = dic.solve(
+                self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
+                minibatch=10, method='parallel_cd',
+                maxiter=10000, lasso_method='ista', lasso_iter=10,
+                random_seed=0, mask=self.mask)
+        for method in self.methods:
+            it, D, x = dic.solve(
+                    self.y, self.D.copy(), self.alpha, x=None, tol=1.0e-5,
+                    minibatch=10, method=method,
+                    maxiter=10000, lasso_method='ista', lasso_iter=10,
+                    random_seed=0, mask=self.mask)
+            self.assertTrue(it < 10000 - 1)
+            self.assertTrue(allclose(D_base, D, atol=1.0e-4))
+
+
 if __name__ == '__main__':
     unittest.main()
