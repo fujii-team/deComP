@@ -13,18 +13,18 @@ class TestUtils(unittest.TestCase):
 
     def test_soft_threshold(self):
         # test with scalar
-        actual = lasso.soft_threshold(0.1, 1.0)
+        actual = lasso.soft_threshold(0.1, 1.0, xp=np)
         expected = 0.0
         self.assertTrue(allclose(actual, expected))
 
         # test with 1d-array
-        actual = lasso.soft_threshold([0.1, -2.0, 1.4], 1.0)
+        actual = lasso.soft_threshold([0.1, -2.0, 1.4], 1.0, xp=xp)
         expected = [0.0, -1.0, 0.4]
         self.assertTrue(allclose(actual, expected))
 
         # test with 2d-array
         actual = lasso.soft_threshold([[0.1, -2.0, 1.4],
-                                       [1.1, 3.0, -1.4]], 1.0)
+                                       [1.1, 3.0, -1.4]], 1.0, xp=xp)
         expected = [[0.0, -1.0, 0.4],
                     [0.1, 2.0, -0.4]]
         self.assertTrue(allclose(actual, expected))
@@ -33,22 +33,22 @@ class TestUtils(unittest.TestCase):
         # test with 1d-array
         # real
         x = xp.array([0.1, -2.0, 1.4])
-        actual = lasso.soft_threshold(x + 0.0j, 1.0)
-        expected = lasso.soft_threshold(x, 1.0)
+        actual = lasso.soft_threshold(x + 0.0j, 1.0, xp)
+        expected = lasso.soft_threshold(x, 1.0, xp)
         self.assertTrue(allclose(actual, expected))
         # imag
-        actual = lasso.soft_threshold(x * 1.0j, 1.0)
-        expected = lasso.soft_threshold(x, 1.0) * 1.0j
+        actual = lasso.soft_threshold(x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold(x, 1.0, xp) * 1.0j
         self.assertTrue(allclose(actual, expected))
 
         # 45deg
-        actual = lasso.soft_threshold(x + x * 1.0j, 1.0)
-        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0)\
+        actual = lasso.soft_threshold(x + x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0, xp)\
             * (np.sqrt(0.5) + np.sqrt(0.5) * 1.0j)
         self.assertTrue(allclose(actual, expected))
         # -45deg
-        actual = lasso.soft_threshold(x - x * 1.0j, 1.0)
-        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0)\
+        actual = lasso.soft_threshold(x - x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0, xp)\
             * (np.sqrt(0.5) - np.sqrt(0.5) * 1.0j)
         self.assertTrue(allclose(actual, expected))
 

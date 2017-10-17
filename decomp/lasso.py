@@ -5,7 +5,7 @@ from .utils.dtype import float_type
 from .utils import assertion
 
 
-def soft_threshold(x, y):
+def soft_threshold(x, y, xp):
     """
     complex-value compatible soft-threasholding function.
 
@@ -23,8 +23,6 @@ def soft_threshold(x, y):
         (r - y) * exp(1j * phi) if r > y
         0 otherwise
     """
-    xp = get_array_module(x)
-
     if hasattr(x, 'dtype') and x.dtype.kind == 'c':
         sign = x / (xp.abs(x) + 1.0e-12 * y)
     else:
@@ -162,13 +160,13 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
-def _update(yAt, AAt, x0, L, alpha, xp=np):
+def _update(yAt, AAt, x0, L, alpha, xp):
     """
     1 iteration by ISTA method.
     This is also used as fista, where w0 is passed instead of x0
     """
     dx = yAt - xp.tensordot(x0, AAt, axes=1)
-    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L)
+    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
 
 
 def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
@@ -210,19 +208,20 @@ def solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0
 
 
-def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp=np):
+def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp):
     """
     1 iteration by ISTA method with missing value
     This is also used as fista, where w0 is passed instead of x0
     """
     dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
-    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L)
+    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
 
 
 def solve_cd(y, A, alpha, x, tol, maxiter, xp):
     """ Fast path to solve lasso by coordinate descent with mask """
     return solve_cd_mask(y, A, alpha, x, tol, maxiter,
                          xp.ones(y.shape, float_type(y.dtype)), xp)
+
 
 def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """
@@ -236,7 +235,7 @@ def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
             xA = xp.tensordot(x, A, axes=1) * mask\
                 - xp.tensordot(x[:, k:k+1], A[k:k+1], axes=1)
             x_new = xp.tensordot(y - xA, At[:, k], axes=1)
-            x_new = soft_threshold(x_new, alpha) / AAt[k, k]
+            x_new = soft_threshold(x_new, alpha, xp) / AAt[k, k]
             flags.append(xp.max(xp.abs(x[:, k] - x_new)) < tol)
             x[:, k] = x_new
 
