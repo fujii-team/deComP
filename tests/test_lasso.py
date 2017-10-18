@@ -18,13 +18,15 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(allclose(actual, expected))
 
         # test with 1d-array
-        actual = lasso.soft_threshold([0.1, -2.0, 1.4], 1.0, xp=xp)
+        actual = lasso.soft_threshold(xp.array([0.1, -2.0, 1.4]),
+                                      1.0, xp=xp)
         expected = [0.0, -1.0, 0.4]
         self.assertTrue(allclose(actual, expected))
 
         # test with 2d-array
-        actual = lasso.soft_threshold([[0.1, -2.0, 1.4],
-                                       [1.1, 3.0, -1.4]], 1.0, xp=xp)
+        actual = lasso.soft_threshold(xp.array([[0.1, -2.0, 1.4],
+                                                [1.1, 3.0, -1.4]]),
+                                      1.0, xp=xp)
         expected = [[0.0, -1.0, 0.4],
                     [0.1, 2.0, -0.4]]
         self.assertTrue(allclose(actual, expected))
@@ -73,7 +75,8 @@ class TestLassoError(unittest.TestCase):
         # with matrix input
         # wrong A shape
         with self.assertRaises(ShapeMismatchError):
-            lasso.solve(np.random.randn(2, 5), np.random.randn(3, 4), alpha=1.0)
+            lasso.solve(np.random.randn(2, 5), np.random.randn(3, 4),
+                        alpha=1.0)
         # wrong x shape
         with self.assertRaises(ShapeMismatchError):
             lasso.solve(np.random.randn(2, 5), np.random.randn(3, 5),
@@ -123,53 +126,67 @@ class TestLasso(unittest.TestCase):
     def randn(self, *shape):
         return self.rng.randn(*shape)
 
+    def set_alpha(self):
+        self.alpha = 0.1
+
     def setUp(self):
+        self.set_alpha()
         self.rng = xp.random.RandomState(0)
         self.A = self.randn(5, 10)
         self.x_true = self.randn(5) * xp.rint(self.rng.uniform(size=5))
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(10) * 0.1
-        self.mask = xp.rint(self.rng.uniform(0.49, 1, size=10))
+        self.mask = xp.rint(self.rng.uniform(0.4, 1, size=10))
 
     def test_ista(self):
-        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+        it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                             method='ista', maxiter=1000)
         self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
+        self.assert_minimum(x, tol=1.0e-5)
+        # x should not be all zero
+        self.assertFalse(allclose(x, xp.zeros_like(x)))
 
     def test_ista_mask(self):
-        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+        it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                             method='ista', maxiter=1000, mask=self.mask)
         self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, alpha=1.0, tol=1.0e-5, mask=self.mask)
+        self.assert_minimum(x, tol=1.0e-5, mask=self.mask)
+        # x should not be all zero
+        self.assertFalse(allclose(x, xp.zeros_like(x)))
 
     def test_fista(self):
-        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+        it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                             method='fista', maxiter=1000)
         self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, alpha=1.0, tol=1.0e-5)
+        self.assert_minimum(x, tol=1.0e-5)
+        # x should not be all zero
+        self.assertFalse(allclose(x, xp.zeros_like(x)))
 
     def test_fista_mask(self):
-        it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+        it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                             method='fista', maxiter=1000, mask=self.mask)
         self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, alpha=1.0, tol=1.0e-5, mask=self.mask)
+        self.assert_minimum(x, tol=1.0e-5, mask=self.mask)
+        # x should not be all zero
+        self.assertFalse(allclose(x, xp.zeros_like(x)))
 
-    def error(self, x, alpha, mask=None):
+    def error(self, x, mask):
         mask = xp.ones(self.y.shape, dtype=float) if mask is None else mask
-        loss = xp.sum(xp.square(xp.abs(
-                self.y - xp.tensordot(x, self.A, axes=1)) * mask))
-        return 0.5 / alpha * loss + xp.sum(xp.abs(x))
+        alpha = self.alpha * xp.sum(mask, axis=-1, keepdims=True)
+        loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
+                self.y - xp.tensordot(x, self.A, axes=1))) * mask)
+        return loss + xp.sum(xp.abs(x))
 
-    def assert_minimum(self, x, alpha, tol, n=3, mask=None):
-        loss = self.error(x, alpha, mask)
+    def assert_minimum(self, x, tol, n=3, mask=None):
+        loss = self.error(x, mask)
         for _ in range(n):
             dx = self.randn(*x.shape) * tol
-            self.assertTrue(loss < self.error(x + dx, alpha, mask))
+            self.assertTrue(loss < self.error(x + dx, mask))
 
 
 class TestLassoMatrix(TestLasso):
     def setUp(self):
+        self.set_alpha()
         self.rng = xp.random.RandomState(0)
         self.A = self.randn(5, 10)
         x_true = self.randn(55) * xp.rint(self.rng.uniform(size=55))
@@ -182,6 +199,7 @@ class TestLassoMatrix(TestLasso):
 
 class TestLassoTensor(TestLasso):
     def setUp(self):
+        self.set_alpha()
         self.rng = xp.random.RandomState(0)
         self.A = self.randn(5, 10)
         x_true = self.randn(660) * xp.rint(self.rng.uniform(size=660))
@@ -214,38 +232,47 @@ class TestLasso_equivalence(unittest.TestCase):
     def randn(self, *shape):
         return self.rng.randn(*shape)
 
+    def set_alpha(self):
+        self.alpha = 0.1
+
     def setUp(self):
+        self.set_alpha()
         self.rng = xp.random.RandomState(0)
         self.A = self.randn(5, 10)
         x_true = self.randn(55) * xp.rint(self.rng.uniform(size=55))
         self.x_true = x_true.reshape(11, 5)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(11, 10) * 0.1
-        v = self.rng.uniform(0.4, 1.0, size=110).reshape(11, 10)
+        v = self.rng.uniform(0.45, 1.0, size=110).reshape(11, 10)
         self.mask = xp.rint(v)
 
-        self.it, self.x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
-                                      method='ista', maxiter=1000)
+        self.it, self.x = lasso.solve(
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
+                    method='ista', maxiter=1000)
         self.mask_it, self.mask_x = lasso.solve(
-                    self.y, self.A, alpha=1.0, tol=1.0e-6,
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                     method='ista', maxiter=1000, mask=self.mask)
         self.methods = ['fista', 'cd']
 
     def test_compare(self):
         for method in self.methods:
-            it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+            it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000)
             self.assertTrue(it < 1000 - 1)
             self.assertTrue(it != self.it)
             self.assertTrue(allclose(x, self.x, atol=1.0e-4))
+            # x should not be all zero
+            self.assertFalse(allclose(x, xp.zeros_like(x)))
 
     def test_compare_mask(self):
         for method in self.methods:
-            it, x = lasso.solve(self.y, self.A, alpha=1.0, tol=1.0e-6,
+            it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000, mask=self.mask)
             self.assertTrue(it < 1000 - 1)
             self.assertTrue(it != self.mask_it)
-            self.assertTrue(allclose(x, self.mask_x, atol=1.0e-4))
+            self.assertTrue(allclose(x, self.mask_x, atol=2.0e-4))
+            # x should not be all zero
+            self.assertFalse(allclose(x, xp.zeros_like(x)))
 
 
 class TestLasso_equivalence_complex(TestLasso_equivalence):

@@ -17,11 +17,11 @@ class TestFloat(unittest.TestCase):
         self.y = xp.dot(self.xtrue, self.Dtrue) + self.randn(101, 5) * 0.1
         self.D = self.Dtrue + self.randn(*self.Dtrue.shape) * 0.3
         self.mask = xp.rint(
-                self.rng.uniform(0.3, 1, size=505)).reshape(101, 5)
+                self.rng.uniform(0.45, 1, size=505)).reshape(101, 5)
 
     def test_run(self):
         D = self.D.copy()
-        alpha = 2.0
+        alpha = 0.5
         it, D, x = dic.solve(self.y, D, alpha, x=None, tol=1.0e-6,
                              minibatch=1, maxiter=1000,
                              lasso_method='ista', lasso_iter=10,
@@ -31,7 +31,7 @@ class TestFloat(unittest.TestCase):
 
     def test_run_minibatch(self):
         D = self.D.copy()
-        alpha = 2.0
+        alpha = 0.5
         it, D, x = dic.solve(self.y, D, alpha, x=None, tol=1.0e-6,
                              minibatch=10, maxiter=1000,
                              lasso_method='ista', lasso_iter=10,
@@ -41,7 +41,7 @@ class TestFloat(unittest.TestCase):
 
     def test_run_minibatch_mask(self):
         D = self.D.copy()
-        alpha = 2.0
+        alpha = 0.5
         y = self.mask * self.y
         it, D, x = dic.solve(y, D, alpha, x=None, tol=1.0e-5,
                              minibatch=10, maxiter=10000,
@@ -59,10 +59,11 @@ class TestFloat(unittest.TestCase):
 
     def error(self, x, D, alpha, mask=None):
         mask = xp.ones(self.y.shape, dtype=float) if mask is None else mask
+        alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
         D = D / xp.maximum(xp.sum(D * D, axis=0), 1.0)
-        loss = xp.sum(xp.square(xp.abs(
-            self.y - xp.tensordot(x, D, axes=1))))
-        return 0.5 / alpha * loss + xp.sum(xp.abs(x))
+        loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
+                self.y - xp.tensordot(x, D, axes=1))) * mask)
+        return loss + xp.sum(xp.abs(x))
 
     def assert_minimum(self, x, D, alpha, tol, n=3, mask=None):
         loss = self.error(x, D, alpha, mask)
@@ -91,11 +92,11 @@ class TestComplex(TestFloat):
 
     def error(self, x, D, alpha, mask=None):
         mask = xp.ones(self.y.shape, dtype=float) if mask is None else mask
+        alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
         D = D / xp.maximum(xp.real(xp.sum(xp.conj(D) * D, axis=0)), 1.0)
-        loss = xp.sum(xp.square(xp.abs(
-            self.y - xp.tensordot(x, D, axes=1))))
-        return 0.5 / alpha * loss + xp.sum(xp.abs(x))
-
+        loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
+                self.y - xp.tensordot(x, D, axes=1))) * mask)
+        return loss + xp.sum(xp.abs(x))
 
 class Test_method_equivalence(unittest.TestCase):
     def randn(self, *shape):
@@ -111,7 +112,7 @@ class Test_method_equivalence(unittest.TestCase):
         self.D = self.Dtrue + self.randn(*self.Dtrue.shape) * 0.3
         self.mask = xp.rint(
                 self.rng.uniform(0.4, 1, size=505)).reshape(101, 5)
-        self.alpha = 1.0
+        self.alpha = 0.2
         self.methods = ['block_cd']
 
     def test_compare(self):

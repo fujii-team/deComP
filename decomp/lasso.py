@@ -36,12 +36,13 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
     """
     Solve Lasso problem
 
-    argmin_x {|y - xA|^2 - alpha |x|}
+    argmin_x {1 / (2 * n) * |y - xA|^2 - alpha |x|}
 
     with
     y: [..., n_channels]
     x: [..., n_features]
     A: [n_features, n_channels]
+    n: [...]
 
     Parameters
     ----------
@@ -78,7 +79,8 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
     assertion.assert_dtypes(y=y, A=A, x=x)
     assertion.assert_dtypes(mask=mask, dtypes='f')
     assertion.assert_shapes('x', x, 'A', A, axes=1)
-    assertion.assert_shapes('y', y, 'x', x, axes=np.arange(x.ndim - 1).tolist())
+    assertion.assert_shapes('y', y, 'x', x,
+                            axes=np.arange(x.ndim - 1).tolist())
     assertion.assert_shapes('y', y, 'A', A, axes=[-1])
     assertion.assert_shapes('y', y, 'mask', mask)
 
@@ -126,7 +128,7 @@ def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
     yAt = xp.tensordot(y, At, axes=1)
-
+    alpha = alpha * A.shape[-1]
     L = 2.0 * xp.max(xp.abs(AAt)) / alpha
 
     for i in range(maxiter):
@@ -143,7 +145,7 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
     yAt = xp.tensordot(y, At, axes=1)
-
+    alpha = alpha * A.shape[-1]
     L = 2.0 * xp.max(xp.abs(AAt)) / alpha
 
     w0 = x0
@@ -173,6 +175,8 @@ def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by ista method with missing value """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
+    # here, alpha is sample dependent, because of the mask
+    alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
     L = 2.0 * xp.max(xp.abs(AAt)) / alpha
 
     yAt = xp.tensordot(y * mask, At, axes=1)
@@ -190,6 +194,8 @@ def solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
+    # here, alpha is sample dependent, because of the mask
+    alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
     L = 2.0 * xp.max(xp.abs(AAt)) / alpha
 
     yAt = xp.tensordot(y * mask, At, axes=1)
@@ -227,8 +233,10 @@ def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
-
+    # here, alpha is sample dependent, because of the mask
+    alpha = alpha * xp.sum(mask, axis=-1)
     y = y * mask
+
     for i in range(maxiter):
         flags = []
         for k in range(x.shape[-1]):
