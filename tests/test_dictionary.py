@@ -46,7 +46,7 @@ class TestFloat(unittest.TestCase):
         it, D, x = dic.solve(self.y, D, alpha, x=None, tol=1.0e-4,
                              method=self.method,
                              minibatch=100, maxiter=maxiter,
-                             lasso_method='ista', lasso_iter=1000,
+                             lasso_method='cd', lasso_iter=1000,
                              random_seed=0)
         self.assertTrue(it < maxiter - 1)
         self.assert_minimum(x, D, alpha, tol=1.0e-3, n=3)
@@ -60,7 +60,7 @@ class TestFloat(unittest.TestCase):
         y = self.mask * self.y
         it, D, x = dic.solve(y, D, alpha, x=None, tol=1.0e-3,
                              minibatch=1, maxiter=maxiter,
-                             lasso_method='ista', lasso_iter=100,
+                             lasso_method='cd', lasso_iter=100,
                              random_seed=0, mask=self.mask)
         self.assertTrue(it < maxiter - 1)
         self.assertFalse(allclose(x, xp.zeros_like(x)))
@@ -69,11 +69,11 @@ class TestFloat(unittest.TestCase):
         # make sure that the solution is different from
         it2, D2, x2 = dic.solve(self.y, D, alpha, x=None, tol=1.0e-5,
                                 minibatch=10, maxiter=maxiter,
-                                lasso_method='ista', lasso_iter=10,
+                                lasso_method='cd', lasso_iter=10,
                                 random_seed=0)
         self.assertFalse(allclose(D, D2, atol=1.0e-4))
     """
-
+    
 
 class TestComplex(TestFloat):
     def randn(self, *shape):

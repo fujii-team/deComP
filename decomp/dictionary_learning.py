@@ -10,7 +10,7 @@ _JITTER = 1.0e-15
 
 def solve(y, D, alpha, x=None, tol=1.0e-3,
           minibatch=None, maxiter=1000, method='block_cd',
-          lasso_method='ista', lasso_iter=10, lasso_tol=1.0e-5,
+          lasso_method='cd', lasso_iter=10, lasso_tol=1.0e-5,
           mask=None, random_seed=None):
     """
     Learn Dictionary with lasso regularization.
@@ -79,7 +79,7 @@ def solve_fastpath(y, D, alpha, x, tol, minibatch, maxiter, method,
     """
     if method == 'block_cd':
         return solve_cd(
-            y, D, alpha, x, tol, minibatch, maxiter, 
+            y, D, alpha, x, tol, minibatch, maxiter,
             lasso_method, lasso_iter, lasso_tol, rng, xp, mask=mask)
     elif method == 'block_cd_fullbatch':
         return solve_block_cd_fullbatch(
