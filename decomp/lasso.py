@@ -1,8 +1,10 @@
 import numpy as np
-import warnings
 from .utils.cp_compat import get_array_module
 from .utils.dtype import float_type
 from .utils import assertion
+
+
+AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista']
 
 
 def soft_threshold(x, y, xp):
@@ -84,10 +86,9 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
     assertion.assert_shapes('y', y, 'A', A, axes=[-1])
     assertion.assert_shapes('y', y, 'mask', mask)
 
-    available_methods = ['ista', 'fista', 'cd']
-    if method not in available_methods:
+    if method not in AVAILABLE_METHODS:
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
-                            str(available_methods), method))
+                            str(AVAILABLE_METHODS), method))
 
     return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=mask)
 
@@ -100,6 +101,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
         if method == 'ista':
             return solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                               xp=xp)
+        elif method == 'acc_ista':
+            return solve_acc_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                  xp=xp)
         elif method == 'fista':
             return solve_fista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                xp=xp)
@@ -112,6 +116,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
         if method == 'ista':
             return solve_ista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                    mask=mask, xp=xp)
+        elif method == 'acc_ista':
+            return solve_acc_ista_mask(y, A, alpha, x, tol=tol,
+                                       maxiter=maxiter, mask=mask, xp=xp)
         elif method == 'fista':
             return solve_fista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                     mask=mask, xp=xp)
@@ -123,13 +130,19 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
                                       'implemented with mask.')
 
 
+def error(y, A, x, alpha, xp):
+    loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
+                                        y - xp.tensordot(x, A, axes=1))))
+    return loss + xp.sum(xp.abs(x))
+
+
 def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by ista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
     yAt = xp.tensordot(y, At, axes=1)
     alpha = alpha * A.shape[-1]
-    L = 2.0 * xp.max(xp.abs(AAt)) / alpha
+    L = (xp.linalg.svd(A)[1][0])**2
 
     for i in range(maxiter):
         x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
@@ -137,6 +150,27 @@ def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
             return i, x0_new
         else:
             x0 = x0_new
+
+    return maxiter - 1, x0
+
+
+def solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
+    """ Nesterovs' Accelerated Proximal Gradient """
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    yAt = xp.tensordot(y, At, axes=1)
+    alpha = alpha * A.shape[-1]
+    L = (xp.linalg.svd(A)[1][0])**2
+
+    v = x0
+    x0_new = x0
+    for i in range(maxiter):
+        x0 = x0_new
+        x0_new = _update(yAt, AAt, v, L, alpha, xp=xp)
+        v = x0_new + i / (i + 3) * (x0_new - x0)
+
+        if xp.max(xp.abs(x0_new - x0)) < tol:
+            return i, x0_new
     return maxiter - 1, x0
 
 
@@ -146,7 +180,7 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     AAt = xp.dot(A, At)
     yAt = xp.tensordot(y, At, axes=1)
     alpha = alpha * A.shape[-1]
-    L = 2.0 * xp.max(xp.abs(AAt)) / alpha
+    L = (xp.linalg.svd(A)[1][0])**2
 
     w0 = x0
     beta = 1.0
@@ -174,10 +208,9 @@ def _update(yAt, AAt, x0, L, alpha, xp):
 def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by ista method with missing value """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-    AAt = xp.dot(A, At)
     # here, alpha is sample dependent, because of the mask
     alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-    L = 2.0 * xp.max(xp.abs(AAt)) / alpha
+    L = (xp.linalg.svd(A)[1][0])**2
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
@@ -190,13 +223,34 @@ def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0
 
 
+def solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+    """ Fast path to solve lasso by ista method with missing value """
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    # here, alpha is sample dependent, because of the mask
+    alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
+    L = (xp.linalg.svd(A)[1][0])**2
+
+    yAt = xp.tensordot(y * mask, At, axes=1)
+
+    v = x0
+    x0_new = x0
+    for i in range(maxiter):
+        x0 = x0_new
+        x0_new = _update_w_mask(yAt, A, At, v, L, alpha, mask=mask, xp=xp)
+        v = x0_new + i / (i + 3) * (x0_new - x0)
+        if xp.max(xp.abs(x0_new - x0)) < tol:
+            return i, x0_new
+        else:
+            x0 = x0_new
+    return maxiter - 1, x0
+
+
 def solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-    AAt = xp.dot(A, At)
     # here, alpha is sample dependent, because of the mask
     alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-    L = 2.0 * xp.max(xp.abs(AAt)) / alpha
+    L = (xp.linalg.svd(A)[1][0])**2
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
@@ -225,8 +279,23 @@ def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp):
 
 def solve_cd(y, A, alpha, x, tol, maxiter, xp):
     """ Fast path to solve lasso by coordinate descent with mask """
-    return solve_cd_mask(y, A, alpha, x, tol, maxiter,
-                         xp.ones(y.shape, float_type(y.dtype)), xp)
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    alpha = alpha * A.shape[-1]
+
+    for i in range(maxiter):
+        flags = []
+        for k in range(x.shape[-1]):
+            xA = xp.tensordot(x, A, axes=1)\
+                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
+            x_new = xp.tensordot(y - xA, At[:, k], axes=1)
+            x_new = soft_threshold(x_new, alpha, xp) / AAt[k, k]
+            flags.append(xp.max(xp.abs(x[..., k] - x_new)) < tol)
+            x[..., k] = x_new
+
+        if all(flags):
+            return i, x
+    return maxiter - 1, x
 
 
 def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
@@ -241,11 +310,11 @@ def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
         flags = []
         for k in range(x.shape[-1]):
             xA = xp.tensordot(x, A, axes=1) * mask\
-                - xp.tensordot(x[:, k:k+1], A[k:k+1], axes=1)
+                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
             x_new = xp.tensordot(y - xA, At[:, k], axes=1)
             x_new = soft_threshold(x_new, alpha, xp) / AAt[k, k]
-            flags.append(xp.max(xp.abs(x[:, k] - x_new)) < tol)
-            x[:, k] = x_new
+            flags.append(xp.max(xp.abs(x[..., k] - x_new)) < tol)
+            x[..., k] = x_new
 
         if all(flags):
             return i, x

@@ -136,6 +136,9 @@ class TestCase(unittest.TestCase):
             dx = self.randn(*x.shape) * tol
             self.assertTrue(loss < self.error(x + dx, alpha, mask))
 
+    def message(self, alpha, method):
+        return '{0:s}, alpha: {1:f}'.format(method, alpha)
+
 
 class TestLasso(TestCase):
     def randn(self, *shape):
@@ -152,29 +155,27 @@ class TestLasso(TestCase):
     def _test(self, alpha, method):
         it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                             method=method, maxiter=1000)
-        self.assertTrue(it < 1000 - 1)
+        assert it < 1000 - 1, self.message(alpha, method)
         self.assert_minimum(x, alpha, tol=1.0e-5)
         # x should not be all zero
-        self.assertFalse(allclose(x, xp.zeros_like(x)))
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
     def _test_mask(self, alpha, method):
         it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                             method=method, maxiter=1000, mask=self.mask)
-        self.assertTrue(it < 1000 - 1)
+        assert it < 1000 - 1, self.message(alpha, method)
         self.assert_minimum(x, alpha, tol=1.0e-5, mask=self.mask)
         # x should not be all zero
-        self.assertFalse(allclose(x, xp.zeros_like(x)))
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
     def test(self):
         alpha = 0.1
-        for method in ['ista', 'fista']:
-            print(method)
+        for method in ['ista', 'fista', 'acc_ista', 'cd']:  # TODO support all the methods
             self._test(alpha, method)
 
     def test_mask(self):
         alpha = 0.1
-        for method in ['ista', 'fista']:
-            print(method)
+        for method in ['ista', 'fista']:  # TODO support all the methods
             self._test_mask(alpha, method)
 
 
@@ -244,25 +245,28 @@ class TestLasso_equivalence(TestCase):
         self.mask_it, self.mask_x = lasso.solve(
                     self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                     method='ista', maxiter=1000, mask=self.mask)
-        self.methods = ['fista', 'cd']
+        self.methods = lasso.AVAILABLE_METHODS.copy()
+        self.methods.remove('ista')
 
     def test_compare(self):
         for method in self.methods:
             it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000)
-            self.assertTrue(it < 1000 - 1)
-            self.assertTrue(it != self.it)
-            self.assertTrue(allclose(x, self.x, atol=1.0e-4))
+            assert it < 1000 - 1, self.message(self.alpha, method)
+            assert it != self.it, self.message(self.alpha, method)
+            assert allclose(x, self.x, atol=1.0e-4)
             # x should not be all zero
-            self.assertFalse(allclose(x, xp.zeros_like(x)))
+            assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
+                                                                   method)
 
     def test_compare_mask(self):
         for method in self.methods:
             it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000, mask=self.mask)
-            self.assertTrue(it < 1000 - 1)
-            self.assertTrue(it != self.mask_it)
-            self.assertTrue(allclose(x, self.mask_x, atol=2.0e-4))
+            assert it < 1000 - 1, self.message(self.alpha, method)
+            assert it != self.mask_it, self.message(self.alpha, method)
+            assert allclose(x, self.mask_x, atol=2.0e-4), self.message(
+                                                        self.alpha, method)
             # x should not be all zero
             self.assertFalse(allclose(x, xp.zeros_like(x)))
 
@@ -291,8 +295,7 @@ class TestLasso_various_alpha(TestCase):
                         self.A) + self.randn(11, 10) * 0.1
         v = self.rng.uniform(0.45, 1.0, size=110).reshape(11, 10)
         self.mask = xp.rint(v)
-        self.methods = ['cd']
-        # self.methods = ['cd', 'ista']
+        self.methods = ['cd', 'acc_ista', 'fista']
 
     def test(self):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
@@ -302,8 +305,8 @@ class TestLasso_various_alpha(TestCase):
 
     def run1(self, alpha, method):
         it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
-                            method=method, maxiter=1000)
-        self.assertTrue(it < 1000 - 1)
+                            method=method, maxiter=3000)
+        assert it < 3000 - 1, self.message(alpha, method)
         self.assert_minimum(x, alpha, tol=1.0e-5)
 
 
