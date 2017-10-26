@@ -1,7 +1,12 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
-from .utils.dtype import float_type
 from .utils import assertion
+
+
+"""
+Many algorithms are taken from
+http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
+"""
 
 
 AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista']
@@ -34,7 +39,7 @@ def soft_threshold(x, y, xp):
 
 
 def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
-          mask=None):
+          mask=None, **kwargs):
     """
     Solve Lasso problem
 
@@ -90,10 +95,12 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(AVAILABLE_METHODS), method))
 
-    return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=mask)
+    return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=mask,
+                          **kwargs)
 
 
-def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
+def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
+                   **kwargs):
     """ fast path for lasso, without default value setting and shape/dtype
     assertions.
     """
@@ -128,12 +135,6 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None):
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
-
-
-def error(y, A, x, alpha, xp):
-    loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
-                                        y - xp.tensordot(x, A, axes=1))))
-    return loss + xp.sum(xp.abs(x))
 
 
 def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
