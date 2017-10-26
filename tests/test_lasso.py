@@ -245,7 +245,7 @@ class TestLasso_equivalence(TestCase):
         self.mask_it, self.mask_x = lasso.solve(
                     self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                     method='ista', maxiter=1000, mask=self.mask)
-        self.methods = lasso.AVAILABLE_METHODS.copy()
+        self.methods = list(lasso.AVAILABLE_METHODS)
         self.methods.remove('ista')
 
     def test_compare(self):
@@ -295,7 +295,7 @@ class TestLasso_various_alpha(TestCase):
                         self.A) + self.randn(11, 10) * 0.1
         v = self.rng.uniform(0.45, 1.0, size=110).reshape(11, 10)
         self.mask = xp.rint(v)
-        self.methods = ['cd', 'acc_ista', 'fista']
+        self.methods = ['cd', 'acc_ista', 'fista', 'cd_ista']
 
     def test(self):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
