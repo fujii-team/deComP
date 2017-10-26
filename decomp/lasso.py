@@ -1,6 +1,7 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils import assertion
+from .math_utils import eigen
 
 
 """
@@ -141,9 +142,10 @@ def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by ista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+
     yAt = xp.tensordot(y, At, axes=1)
     alpha = alpha * A.shape[-1]
-    L = (xp.linalg.svd(A)[1][0])**2
 
     for i in range(maxiter):
         x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
@@ -159,9 +161,10 @@ def solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Nesterovs' Accelerated Proximal Gradient """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+
     yAt = xp.tensordot(y, At, axes=1)
     alpha = alpha * A.shape[-1]
-    L = (xp.linalg.svd(A)[1][0])**2
 
     v = x0
     x0_new = x0
@@ -179,9 +182,10 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+
     yAt = xp.tensordot(y, At, axes=1)
     alpha = alpha * A.shape[-1]
-    L = (xp.linalg.svd(A)[1][0])**2
 
     w0 = x0
     beta = 1.0
@@ -197,6 +201,32 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
+def solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
+    """
+    # TODO
+    Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
+    Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
+    """
+    # We empirically found that p can be estimated from
+    # one iteration of coordinate descent and
+    # parallel cd with p=1.
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    alpha = alpha * A.shape[-1]
+
+    # 1 iteration of coordiante descent
+    dx = xp.ndarray(x0.shape, x0.dtype)
+    for k in range(x0.shape[-1]):
+        xA = xp.tensordot(x, A, axes=1)\
+            - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
+        x_new = xp.tensordot(y - xA, At[:, k], axes=1)
+        x_new = soft_threshold(x_new, alpha, xp) / AAt[k, k]
+        dx[..., k] = x_new - x0
+
+    # 1 iteration of p=1 parallel-cd
+    # TODO
+
+
 def _update(yAt, AAt, x0, L, alpha, xp):
     """
     1 iteration by ISTA method.
@@ -209,9 +239,10 @@ def _update(yAt, AAt, x0, L, alpha, xp):
 def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by ista method with missing value """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
     # here, alpha is sample dependent, because of the mask
     alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-    L = (xp.linalg.svd(A)[1][0])**2
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
@@ -227,9 +258,10 @@ def solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
 def solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by ista method with missing value """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
     # here, alpha is sample dependent, because of the mask
     alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-    L = (xp.linalg.svd(A)[1][0])**2
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
@@ -249,9 +281,10 @@ def solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
 def solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp)
     # here, alpha is sample dependent, because of the mask
     alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-    L = (xp.linalg.svd(A)[1][0])**2
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
