@@ -10,8 +10,8 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 """
 
 
-AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista', 'cd_normalize',
-                     'parallel_cd']#, 'parallel_cd']
+AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista', 'ista_normalize',
+                     'cd_normalize', 'parallel_cd']#, 'parallel_cd']
 
 
 def soft_threshold(x, y, xp):
@@ -110,6 +110,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         if method == 'ista':
             return solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                               xp=xp)
+        elif method == 'ista_normalize':
+            return solve_ista_normalize(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                              xp=xp)
         elif method == 'acc_ista':
             return solve_acc_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                   xp=xp)
@@ -121,9 +124,6 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         elif method == 'cd_normalize':
             return solve_cd_normalize(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                       xp=xp)
-        elif method == 'parallel_cd':
-            return solve_parallel_cd(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                     xp=xp)
         elif method == 'parallel_cd':
             return solve_parallel_cd(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                      xp=xp)
@@ -152,10 +152,10 @@ def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by ista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+    alpha = alpha * A.shape[-1]
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
 
     yAt = xp.tensordot(y, At, axes=1)
-    alpha = alpha * A.shape[-1]
 
     for i in range(maxiter):
         x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
@@ -167,14 +167,40 @@ def solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
+def solve_ista_normalize(y, A, alpha, x0, tol, maxiter, xp):
+    """ Fast path to solve lasso by ista method """
+    if A.dtype.kind != 'c':
+        normalizer = MatrixNormalizer(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = A.T
+    else:
+        normalizer = MatrixNormalizerComplex(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    alpha = alpha * A.shape[-1]
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+
+    yAt = xp.tensordot(y, At, axes=1)
+    tol = normalizer.get_tol(tol)
+    for i in range(maxiter):
+        x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
+        if (xp.abs(x0_new - x0) < tol).all():
+            return i, normalizer.restore(x0_new)
+        else:
+            x0 = x0_new
+
+    return maxiter - 1, normalizer.restore(x0)
+
+
 def solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Nesterovs' Accelerated Proximal Gradient """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+    alpha = alpha * A.shape[-1]
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
 
     yAt = xp.tensordot(y, At, axes=1)
-    alpha = alpha * A.shape[-1]
 
     v = x0
     x0_new = x0
@@ -192,10 +218,10 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp)
+    alpha = alpha * A.shape[-1]
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
 
     yAt = xp.tensordot(y, At, axes=1)
-    alpha = alpha * A.shape[-1]
 
     w0 = x0
     beta = 1.0
@@ -381,28 +407,30 @@ def solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
         normalizer = MatrixNormalizerComplex(A, alpha, xp)
         A, alpha = normalizer.A, normalizer.alpha
         At = xp.conj(A.T)
+    alpha = alpha * A.shape[-1]
 
     rng = xp.random.RandomState(0)
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
-    p = xp.rint(A.shape[0] / rho)  # number of parallel update
+    p = xp.int(2 * A.shape[0] / rho)  # number of parallel update
     if p <= 1:
         raise ValueError
         return solve_cd(y, A, alpha, x0, tol, maxiter, xp)
 
     yAt = xp.tensordot(y, At, axes=1)
-    alpha = alpha * A.shape[-1]
+    L = rho / alpha
 
     for i in range(maxiter):
-        x0_new = _update(yAt, AAt, x0, 1.0, alpha, xp=xp)
+        x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
         dx = x0_new - x0
         if xp.max(xp.abs(dx)) < tol:
             return i, x0_new
         else:
-            index = rng.choise(A.shape[0], p)
+            index = rng.choice(A.shape[0], p)
             x0[..., index] += dx[..., index]
 
     return maxiter - 1, x0
+
 
 def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """

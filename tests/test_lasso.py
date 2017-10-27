@@ -156,7 +156,8 @@ class TestLasso(TestCase):
         it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                             method=method, maxiter=1000)
         assert it < 1000 - 1, self.message(alpha, method)
-        self.assert_minimum(x, alpha, tol=1.0e-5)
+        self.assert_minimum(x, alpha, tol=1.0e-5,
+                            message=self.message(alpha, method))
         # x should not be all zero
         assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
@@ -171,8 +172,9 @@ class TestLasso(TestCase):
 
     def test(self):
         alpha = 0.1
-        for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize',
-                       'parallel_cd']:  # TODO support all the methods
+        #for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize',
+        #               'parallel_cd']:  # TODO support all the methods
+        for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize', 'ista_normalize']: 
             self._test(alpha, method)
 
     def test_mask(self):
