@@ -130,11 +130,11 @@ class TestCase(unittest.TestCase):
                 self.y - xp.tensordot(x, self.A, axes=1))) * mask)
         return loss + xp.sum(xp.abs(x))
 
-    def assert_minimum(self, x, alpha, tol, n=3, mask=None):
+    def assert_minimum(self, x, alpha, tol, n=3, mask=None, message=None):
         loss = self.error(x, alpha, mask)
         for _ in range(n):
             dx = self.randn(*x.shape) * tol
-            self.assertTrue(loss < self.error(x + dx, alpha, mask))
+            assert loss < self.error(x + dx, alpha, mask), message
 
     def message(self, alpha, method):
         return '{0:s}, alpha: {1:f}'.format(method, alpha)
@@ -164,13 +164,15 @@ class TestLasso(TestCase):
         it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                             method=method, maxiter=1000, mask=self.mask)
         assert it < 1000 - 1, self.message(alpha, method)
-        self.assert_minimum(x, alpha, tol=1.0e-5, mask=self.mask)
+        self.assert_minimum(x, alpha, tol=1.0e-5, mask=self.mask,
+                            message=self.message(alpha, method))
         # x should not be all zero
         assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
     def test(self):
         alpha = 0.1
-        for method in ['ista', 'fista', 'acc_ista', 'cd']:  # TODO support all the methods
+        for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize',
+                       'parallel_cd']:  # TODO support all the methods
             self._test(alpha, method)
 
     def test_mask(self):
@@ -254,7 +256,8 @@ class TestLasso_equivalence(TestCase):
                                 method=method, maxiter=1000)
             assert it < 1000 - 1, self.message(self.alpha, method)
             assert it != self.it, self.message(self.alpha, method)
-            assert allclose(x, self.x, atol=1.0e-4)
+            assert allclose(x, self.x, atol=1.0e-4), self.message(self.alpha,
+                                                                  method)
             # x should not be all zero
             assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
                                                                    method)
@@ -268,7 +271,8 @@ class TestLasso_equivalence(TestCase):
             assert allclose(x, self.mask_x, atol=2.0e-4), self.message(
                                                         self.alpha, method)
             # x should not be all zero
-            self.assertFalse(allclose(x, xp.zeros_like(x)))
+            assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
+                                                                   method)
 
 
 class TestLasso_equivalence_complex(TestLasso_equivalence):

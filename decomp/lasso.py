@@ -10,7 +10,8 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 """
 
 
-AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista']
+AVAILABLE_METHODS = ['ista', 'cd', 'fista', 'acc_ista', 'cd_normalize',
+                     'parallel_cd']#, 'parallel_cd']
 
 
 def soft_threshold(x, y, xp):
@@ -117,6 +118,15 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
                                xp=xp)
         elif method == 'cd':
             return solve_cd(y, A, alpha, x, tol=tol, maxiter=maxiter, xp=xp)
+        elif method == 'cd_normalize':
+            return solve_cd_normalize(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                      xp=xp)
+        elif method == 'parallel_cd':
+            return solve_parallel_cd(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                     xp=xp)
+        elif method == 'parallel_cd':
+            return solve_parallel_cd(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                     xp=xp)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented.')
@@ -199,32 +209,6 @@ def solve_fista(y, A, alpha, x0, tol, maxiter, xp):
             x0 = x0_new
             beta = beta_new
     return maxiter - 1, x0
-
-
-def solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
-    """
-    # TODO
-    Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
-    Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
-    """
-    # We empirically found that p can be estimated from
-    # one iteration of coordinate descent and
-    # parallel cd with p=1.
-    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-    AAt = xp.dot(A, At)
-    alpha = alpha * A.shape[-1]
-
-    # 1 iteration of coordiante descent
-    dx = xp.ndarray(x0.shape, x0.dtype)
-    for k in range(x0.shape[-1]):
-        xA = xp.tensordot(x, A, axes=1)\
-            - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
-        x_new = xp.tensordot(y - xA, At[:, k], axes=1)
-        x_new = soft_threshold(x_new, alpha, xp) / AAt[k, k]
-        dx[..., k] = x_new - x0
-
-    # 1 iteration of p=1 parallel-cd
-    # TODO
 
 
 def _update(yAt, AAt, x0, L, alpha, xp):
@@ -311,6 +295,29 @@ def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp):
     return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
 
 
+class MatrixNormalizer(object):
+    """ Normalize A so that [AAt]_{i, i} == 1.
+    alpha value should be also modified.
+    """
+    def __init__(self, A, alpha, xp):
+        self.AAt_diag_sqrt = xp.sqrt(xp.sum(xp.square(A), axis=-1))
+        self.A = A / xp.expand_dims(self.AAt_diag_sqrt, axis=-1)
+        self.alpha = alpha / self.AAt_diag_sqrt
+
+    def restore(self, x):
+        return x / self.AAt_diag_sqrt
+
+    def get_tol(self, tol):
+        return tol * self.AAt_diag_sqrt
+
+
+class MatrixNormalizerComplex(MatrixNormalizer):
+    def __init__(self, A, alpha, xp):
+        self.AAt_diag_sqrt = xp.sqrt(xp.sum(xp.real(xp.conj(A) * A), axis=-1))
+        self.A = A / xp.expand_dims(self.AAt_diag_sqrt, axis=-1)
+        self.alpha = alpha / self.AAt_diag_sqrt
+
+
 def solve_cd(y, A, alpha, x, tol, maxiter, xp):
     """ Fast path to solve lasso by coordinate descent with mask """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
@@ -331,6 +338,71 @@ def solve_cd(y, A, alpha, x, tol, maxiter, xp):
             return i, x
     return maxiter - 1, x
 
+
+def solve_cd_normalize(y, A, alpha, x, tol, maxiter, xp):
+    """ Fast path to solve lasso by coordinate descent with mask """
+    if A.dtype.kind != 'c':
+        normalizer = MatrixNormalizer(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = A.T
+    else:
+        normalizer = MatrixNormalizerComplex(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = xp.conj(A.T)
+
+    alpha = alpha * A.shape[-1]
+    tol = normalizer.get_tol(tol)
+    for i in range(maxiter):
+        flags = []
+        for k in range(x.shape[-1]):
+            xA = xp.tensordot(x, A, axes=1)\
+                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
+            x_new = xp.tensordot(y - xA, At[:, k], axes=1)
+            x_new = soft_threshold(x_new, alpha[k], xp)
+            flags.append(xp.max(xp.abs(x[..., k] - x_new)) < tol[k])
+            x[..., k] = x_new
+
+        if all(flags):
+            return i, normalizer.restore(x)
+    return maxiter - 1, normalizer.restore(x)
+
+
+def solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
+    """
+    # TODO
+    Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
+    Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
+    """
+    if A.dtype.kind != 'c':
+        normalizer = MatrixNormalizer(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = A.T
+    else:
+        normalizer = MatrixNormalizerComplex(A, alpha, xp)
+        A, alpha = normalizer.A, normalizer.alpha
+        At = xp.conj(A.T)
+
+    rng = xp.random.RandomState(0)
+    AAt = xp.dot(A, At)
+    rho = eigen.spectral_radius_Gershgorin(AAt, xp)
+    p = xp.rint(A.shape[0] / rho)  # number of parallel update
+    if p <= 1:
+        raise ValueError
+        return solve_cd(y, A, alpha, x0, tol, maxiter, xp)
+
+    yAt = xp.tensordot(y, At, axes=1)
+    alpha = alpha * A.shape[-1]
+
+    for i in range(maxiter):
+        x0_new = _update(yAt, AAt, x0, 1.0, alpha, xp=xp)
+        dx = x0_new - x0
+        if xp.max(xp.abs(dx)) < tol:
+            return i, x0_new
+        else:
+            index = rng.choise(A.shape[0], p)
+            x0[..., index] += dx[..., index]
+
+    return maxiter - 1, x0
 
 def solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by coordinate descent """
