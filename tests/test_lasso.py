@@ -312,6 +312,46 @@ class TestLasso_equivalence_complex(TestLasso_equivalence):
         return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
 
 
+class TestLasso_equivalence_illcondition(TestLasso_equivalence):
+    """
+    With an ill-conditioned problem with regularization.
+    """
+    @property
+    def alpha(self):
+        return 0.5
+
+    def setUp(self):
+        self.rng = xp.random.RandomState(0)
+        self.A = self.randn(8, 5)
+        x_true = self.randn(10 * 8) * xp.rint(self.rng.uniform(size=10 * 8))
+        self.x_true = x_true.reshape(10, 8)
+        self.y = xp.dot(self.x_true,
+                        self.A) + self.randn(10, 5) * 0.1
+        v = self.rng.uniform(0.45, 1.0, size=10 * 5).reshape(10, 5)
+        self.mask = xp.rint(v)
+
+        self.it, self.x = lasso.solve(
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
+                    method='ista', maxiter=1000)
+        self.mask_it, self.mask_x = lasso.solve(
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
+                    method='ista', maxiter=1000, mask=self.mask)
+        self.methods = list(lasso.AVAILABLE_METHODS)
+        self.methods.remove('ista')
+
+
+class TestLasso_equivalence_illcondition_complex(TestLasso_equivalence):
+    """
+    All the methods should get the global minimum.
+    """
+    def randn(self, *shape):
+        return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
+
+    @property
+    def alpha(self):
+        return 1.0
+
+
 class TestLasso_bad_condition(TestCase):
     """
     The solution must be found even with various alpha
