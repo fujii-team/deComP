@@ -165,7 +165,7 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
-
+    # not forget to restore x value.
     return it, x / AAt_diag_sqrt
 
 
