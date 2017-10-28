@@ -172,6 +172,24 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
     return it, x / AAt_diag_sqrt
 
 
+def _update(yAt, AAt, x0, L, alpha, xp):
+    """
+    1 iteration by ISTA method.
+    This is also used as fista, where w0 is passed instead of x0
+    """
+    dx = yAt - xp.tensordot(x0, AAt, axes=1)
+    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+
+
+def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp):
+    """
+    1 iteration by ISTA method with missing value
+    This is also used as fista, where w0 is passed instead of x0
+    """
+    dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
+    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+
+
 def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     """ Fast path to solve lasso by ista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
@@ -187,6 +205,23 @@ def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
         else:
             x0 = x0_new
 
+    return maxiter - 1, x0
+
+
+def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+    """ Fast path to solve lasso by ista method with missing value """
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+
+    yAt = xp.tensordot(y * mask, At, axes=1)
+
+    for i in range(maxiter):
+        x0_new = _update_w_mask(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
+        if xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
+            return i, x0_new
+        else:
+            x0 = x0_new
     return maxiter - 1, x0
 
 
@@ -207,6 +242,28 @@ def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
 
         if xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
+    return maxiter - 1, x0
+
+
+
+def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+    """ Fast path to solve lasso by ista method with missing value """
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+    AAt = xp.dot(A, At)
+    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+
+    yAt = xp.tensordot(y * mask, At, axes=1)
+
+    v = x0
+    x0_new = x0
+    for i in range(maxiter):
+        x0 = x0_new
+        x0_new = _update_w_mask(yAt, A, At, v, L, alpha, mask=mask, xp=xp)
+        v = x0_new + i / (i + 3) * (x0_new - x0)
+        if xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
+            return i, x0_new
+        else:
+            x0 = x0_new
     return maxiter - 1, x0
 
 
@@ -232,53 +289,6 @@ def _solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
-def _update(yAt, AAt, x0, L, alpha, xp):
-    """
-    1 iteration by ISTA method.
-    This is also used as fista, where w0 is passed instead of x0
-    """
-    dx = yAt - xp.tensordot(x0, AAt, axes=1)
-    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
-
-
-def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
-    """ Fast path to solve lasso by ista method with missing value """
-    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-    AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
-
-    yAt = xp.tensordot(y * mask, At, axes=1)
-
-    for i in range(maxiter):
-        x0_new = _update_w_mask(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
-        if xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
-            return i, x0_new
-        else:
-            x0 = x0_new
-    return maxiter - 1, x0
-
-
-def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
-    """ Fast path to solve lasso by ista method with missing value """
-    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-    AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
-
-    yAt = xp.tensordot(y * mask, At, axes=1)
-
-    v = x0
-    x0_new = x0
-    for i in range(maxiter):
-        x0 = x0_new
-        x0_new = _update_w_mask(yAt, A, At, v, L, alpha, mask=mask, xp=xp)
-        v = x0_new + i / (i + 3) * (x0_new - x0)
-        if xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
-            return i, x0_new
-        else:
-            x0 = x0_new
-    return maxiter - 1, x0
-
-
 def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by fista method """
     At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
@@ -301,35 +311,6 @@ def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0_new
 
 
-def _update_w_mask(yAt, A, At, x0, L, alpha, mask, xp):
-    """
-    1 iteration by ISTA method with missing value
-    This is also used as fista, where w0 is passed instead of x0
-    """
-    dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
-    return soft_threshold(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
-
-
-def _solve_cd(y, A, alpha, x, tol, maxiter, xp):
-    """ Fast path to solve lasso by coordinate descent with mask """
-    # Note that AAt is already normalized, i.e. AAt[i, i] == 1 for all i
-    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
-
-    for i in range(maxiter):
-        flags = []
-        for k in range(x.shape[-1]):
-            xA = xp.tensordot(x, A, axes=1)\
-                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
-            x_new = xp.tensordot(y - xA, At[:, k], axes=1)
-            x_new = soft_threshold(x_new, alpha[k], xp)
-            flags.append(xp.max(xp.abs(x[..., k] - x_new) - tol[k]) < 0.0)
-            x[..., k] = x_new
-
-        if all(flags):
-            return i, x
-    return maxiter - 1, x
-
-
 def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     """
     Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
@@ -341,9 +322,8 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
     L = 1.0 / alpha
-    p = xp.int(2 * A.shape[0] / rho)  # number of parallel update
+    p = xp.int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
-        raise ValueError
         return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
 
     yAt = xp.tensordot(y, At, axes=1)
@@ -371,9 +351,8 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
     L = 1.0 / alpha
-    p = xp.int(2 * A.shape[0] / rho)  # number of parallel update
+    p = xp.int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
-        raise ValueError
         return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
 
     yAt = xp.tensordot(y * mask, At, axes=1)
@@ -388,6 +367,26 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
             x0[..., index] += dx[..., index]
 
     return maxiter - 1, x0
+
+
+def _solve_cd(y, A, alpha, x, tol, maxiter, xp):
+    """ Fast path to solve lasso by coordinate descent """
+    # Note that AAt is already normalized, i.e. AAt[i, i] == 1 for all i
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+
+    for i in range(maxiter):
+        flags = []
+        for k in range(x.shape[-1]):
+            xA = xp.tensordot(x, A, axes=1)\
+                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
+            x_new = xp.tensordot(y - xA, At[:, k], axes=1)
+            x_new = soft_threshold(x_new, alpha[k], xp)
+            flags.append(xp.max(xp.abs(x[..., k] - x_new) - tol[k]) < 0.0)
+            x[..., k] = x_new
+
+        if all(flags):
+            return i, x
+    return maxiter - 1, x
 
 
 def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):

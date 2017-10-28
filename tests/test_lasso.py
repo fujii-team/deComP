@@ -172,12 +172,12 @@ class TestLasso(TestCase):
 
     def test(self):
         for alpha in [0.1, 1.0]:
-            for method in ['ista', 'fista', 'acc_ista', 'cd', 'parallel_cd']:
+            for method in lasso.AVAILABLE_METHODS:
                 self._test(alpha, method)
 
     def test_mask(self):
         for alpha in [0.1, 1.0]:
-            for method in ['ista', 'fista', 'acc_ista', 'cd', 'parallel_cd']:
+            for method in lasso.AVAILABLE_METHODS:
                 self._test_mask(alpha, method)
 
 
@@ -296,26 +296,33 @@ class TestLasso_various_alpha(TestCase):
 
     def setUp(self):
         self.rng = xp.random.RandomState(0)
-        self.A = self.randn(9, 10) * 0.3 + self.randn(10)
+        self.A = self.randn(9, 10) + self.randn(10) * 0.3
         x_true = self.randn(99) * xp.rint(self.rng.uniform(size=99))
         self.x_true = x_true.reshape(11, 9)
         self.y = xp.dot(self.x_true,
                         self.A) + self.randn(11, 10) * 0.1
         v = self.rng.uniform(0.45, 1.0, size=110).reshape(11, 10)
         self.mask = xp.rint(v)
-        self.methods = ['cd', 'acc_ista', 'fista']
+        self.methods = list(lasso.AVAILABLE_METHODS)
 
     def test(self):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
         for method in self.methods:
             for alpha in alphas:
-                self.run1(alpha, method)
+                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                                    method=method, maxiter=3000)
+                assert it < 3000 - 1, self.message(alpha, method)
+                self.assert_minimum(x, alpha, tol=1.0e-5)
 
-    def run1(self, alpha, method):
-        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
-                            method=method, maxiter=3000)
-        assert it < 3000 - 1, self.message(alpha, method)
-        self.assert_minimum(x, alpha, tol=1.0e-5)
+    def test_mask(self):
+        alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
+        for method in self.methods:
+            for alpha in alphas:
+                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                                    method=method, maxiter=3000,
+                                    mask=self.mask)
+                assert it < 3000 - 1, self.message(alpha, method)
+                self.assert_minimum(x, alpha, tol=1.0e-5)
 
 
 if __name__ == '__main__':
