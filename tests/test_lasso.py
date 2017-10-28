@@ -172,12 +172,12 @@ class TestLasso(TestCase):
 
     def test(self):
         for alpha in [0.1, 1.0]:
-            for method in ['ista', 'fista', 'acc_ista', 'cd']:
+            for method in ['ista', 'fista', 'acc_ista', 'cd', 'parallel_cd']:
                 self._test(alpha, method)
 
     def test_mask(self):
         for alpha in [0.1, 1.0]:
-            for method in ['ista', 'fista', 'acc_ista', 'cd']:
+            for method in ['ista', 'fista', 'acc_ista', 'cd', 'parallel_cd']:
                 self._test_mask(alpha, method)
 
 

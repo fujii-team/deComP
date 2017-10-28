@@ -10,7 +10,7 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 """
 
 
-AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista']  # , 'parallel_cd']
+AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista', 'parallel_cd']
 
 
 def soft_threshold(x, y, xp):
@@ -162,6 +162,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         elif method == 'cd':
             it, x = _solve_cd_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                    mask=mask, xp=xp)
+        elif method == 'parallel_cd':
+            it, x = _solve_parallel_cd_mask(y, A, alpha, x, tol=tol,
+                                            maxiter=maxiter, mask=mask, xp=xp)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
@@ -329,7 +332,6 @@ def _solve_cd(y, A, alpha, x, tol, maxiter, xp):
 
 def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     """
-    # TODO
     Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
     Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
     """
@@ -338,18 +340,48 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     rng = xp.random.RandomState(0)
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
+    L = 1.0 / alpha
     p = xp.int(2 * A.shape[0] / rho)  # number of parallel update
     if p <= 1:
         raise ValueError
         return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
 
     yAt = xp.tensordot(y, At, axes=1)
-    L = rho / alpha
 
     for i in range(maxiter):
         x0_new = _update(yAt, AAt, x0, L, alpha, xp=xp)
         dx = x0_new - x0
-        if xp.max(xp.abs(dx)) < tol:
+        if xp.max(xp.abs(dx) - tol) < 0.0:
+            return i, x0_new
+        else:
+            index = rng.choice(A.shape[0], p)
+            x0[..., index] += dx[..., index]
+
+    return maxiter - 1, x0
+
+
+def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+    """
+    Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
+    Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
+    """
+    At = A.T if A.dtype.kind != 'c' else xp.conj(A.T)
+
+    rng = xp.random.RandomState(0)
+    AAt = xp.dot(A, At)
+    rho = eigen.spectral_radius_Gershgorin(AAt, xp)
+    L = 1.0 / alpha
+    p = xp.int(2 * A.shape[0] / rho)  # number of parallel update
+    if p <= 1:
+        raise ValueError
+        return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
+
+    yAt = xp.tensordot(y * mask, At, axes=1)
+
+    for i in range(maxiter):
+        x0_new = _update_w_mask(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
+        dx = x0_new - x0
+        if xp.max(xp.abs(dx) - tol) < 0.0:
             return i, x0_new
         else:
             index = rng.choice(A.shape[0], p)
