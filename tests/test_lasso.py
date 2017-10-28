@@ -220,6 +220,33 @@ class TestLasso_complexTensor(TestLassoTensor):
         return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
 
 
+class TestLassoMatrix_float32(TestLasso):
+    def setUp(self):
+        super(TestLassoMatrix_float32, self).setUp()
+        self.A = self.A.astype(np.float32)
+        self.x_true = self.x_true.astype(np.float32)
+        self.y = self.y.astype(np.float32)
+        self.mask = self.mask.astype(np.float32)
+
+    def _test(self, alpha, method):
+        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                            method=method, maxiter=1000)
+        assert it < 1000 - 1, self.message(alpha, method)
+        self.assert_minimum(x, alpha, tol=1.0e-3,
+                            message=self.message(alpha, method))
+        # x should not be all zero
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
+
+    def _test_mask(self, alpha, method):
+        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                            method=method, maxiter=1000, mask=self.mask)
+        assert it < 1000 - 1, self.message(alpha, method)
+        self.assert_minimum(x, alpha, tol=1.0e-3, mask=self.mask,
+                            message=self.message(alpha, method))
+        # x should not be all zero
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
+
+
 class TestLasso_equivalence(TestCase):
     """
     All the methods should get the global minimum.
@@ -257,7 +284,7 @@ class TestLasso_equivalence(TestCase):
             assert it < 1000 - 1, self.message(self.alpha, method)
 
             if method != 'fista':
-                assert allclose(x, self.x, atol=1.0e-5),\
+                assert allclose(x - self.x, 0.0, atol=1.0e-4),\
                         self.message(self.alpha, method)
             # x should not be all zero
             assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
@@ -275,33 +302,6 @@ class TestLasso_equivalence(TestCase):
             # x should not be all zero
             assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
                                                                    method)
-
-
-class TestLassoMatrix_float32(TestLasso):
-    def setUp(self):
-        super(TestLassoMatrix_float32, self).setUp()
-        self.A = self.A.astype(np.float32)
-        self.x_true = self.x_true.astype(np.float32)
-        self.y = self.y.astype(np.float32)
-        self.mask = self.mask.astype(np.float32)
-
-    def _test(self, alpha, method):
-        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
-                            method=method, maxiter=1000)
-        assert it < 1000 - 1, self.message(alpha, method)
-        self.assert_minimum(x, alpha, tol=1.0e-3,
-                            message=self.message(alpha, method))
-        # x should not be all zero
-        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
-
-    def _test_mask(self, alpha, method):
-        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
-                            method=method, maxiter=1000, mask=self.mask)
-        assert it < 1000 - 1, self.message(alpha, method)
-        self.assert_minimum(x, alpha, tol=1.0e-3, mask=self.mask,
-                            message=self.message(alpha, method))
-        # x should not be all zero
-        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
 
 class TestLasso_equivalence_complex(TestLasso_equivalence):
@@ -345,7 +345,6 @@ class TestLasso_bad_condition(TestCase):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
         for method in self.methods:
             for alpha in alphas:
-                print(method)
                 it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                                     method=method, maxiter=3000,
                                     mask=self.mask)
