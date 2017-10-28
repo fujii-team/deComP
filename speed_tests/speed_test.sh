@@ -1,1 +1,1 @@
-pytest $(dirname $0)/tests --benchmark-save
+pytest $(dirname $0)/tests --benchmark-autosave
