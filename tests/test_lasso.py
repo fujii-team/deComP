@@ -171,16 +171,14 @@ class TestLasso(TestCase):
         assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
 
     def test(self):
-        alpha = 0.1
-        #for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize',
-        #               'parallel_cd']:  # TODO support all the methods
-        for method in ['ista', 'fista', 'acc_ista', 'cd', 'cd_normalize', 'ista_normalize']: 
-            self._test(alpha, method)
+        for alpha in [0.1, 1.0]:
+            for method in ['ista', 'fista', 'acc_ista', 'cd']:
+                self._test(alpha, method)
 
     def test_mask(self):
-        alpha = 0.1
-        for method in ['ista', 'fista']:  # TODO support all the methods
-            self._test_mask(alpha, method)
+        for alpha in [0.1, 1.0]:
+            for method in ['ista', 'fista', 'acc_ista', 'cd']:
+                self._test_mask(alpha, method)
 
 
 class TestLassoMatrix(TestLasso):
@@ -270,7 +268,7 @@ class TestLasso_equivalence(TestCase):
                                 method=method, maxiter=1000, mask=self.mask)
             assert it < 1000 - 1, self.message(self.alpha, method)
             assert it != self.mask_it, self.message(self.alpha, method)
-            assert allclose(x, self.mask_x, atol=2.0e-4), self.message(
+            assert allclose(x - self.mask_x, 0.0, atol=1.0e-4), self.message(
                                                         self.alpha, method)
             # x should not be all zero
             assert not allclose(x, xp.zeros_like(x)), self.message(self.alpha,
