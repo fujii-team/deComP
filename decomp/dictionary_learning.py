@@ -1,17 +1,16 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
-from .utils.dtype import float_type
 from .utils.data import minibatch_index
-from .utils import assertion
+from .utils import assertion, normalize
 from . import lasso
 
 
-_JITTER = 1.0e-10
+_JITTER = 1.0e-15
 
 
 def solve(y, D, alpha, x=None, tol=1.0e-3,
-          minibatch=1, maxiter=1000, method='parallel_cd',
-          lasso_method='ista', lasso_iter=10, lasso_tol=1.0e-5,
+          minibatch=None, maxiter=1000, method='block_cd',
+          lasso_method='cd', lasso_iter=10, lasso_tol=1.0e-5,
           mask=None, random_seed=None):
     """
     Learn Dictionary with lasso regularization.
@@ -47,15 +46,11 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     Notes
     -----
     'block_cd':
-        Essentially equivalent to
-        Mensch ARTHURMENSCH, A., Mairal JULIENMAIRAL, J., & Thirion BETRANDTHIRION,
-        B. (n.d.).
-        Dictionary Learning for Massive Matrix Factorization Gael Varoquaux.
-        Retrieved from http://proceedings.mlr.press/v48/mensch16.pdf
+        Mairal, J., Bach FRANCISBACH, F., Ponce JEANPONCE, J., & Sapiro, G. (n.d.)
+        Online Dictionary Learning for Sparse Coding.
 
     'parallel_cd':
         Parallelized version of 'block_cd'.
-
     """
     # Check all the class are numpy or cupy
     xp = get_array_module(y, D, x)
@@ -70,6 +65,7 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     assertion.assert_shapes('y', y, 'D', D, axes=[-1])
     assertion.assert_shapes('y', y, 'mask', mask)
 
+    D = normalize.l2_strict(D, xp, axis=-1)
     return solve_fastpath(y, D, alpha, x, tol, minibatch, maxiter, method,
                           lasso_method, lasso_iter, lasso_tol, rng, xp,
                           mask=mask)
@@ -81,49 +77,65 @@ def solve_fastpath(y, D, alpha, x, tol, minibatch, maxiter, method,
     Fast path for dictionary learning without any default value setting nor
     shape/dtype assertions.
     """
-    if method in ['parallel_cd', 'block_cd']:
+    if method == 'block_cd':
         return solve_cd(
-            y, D, alpha, x, tol, minibatch, maxiter, method,
+            y, D, alpha, x, tol, minibatch, maxiter,
             lasso_method, lasso_iter, lasso_tol, rng, xp, mask=mask)
+    elif method == 'block_cd_fullbatch':
+        return solve_block_cd_fullbatch(
+            y, D, alpha, x, tol, maxiter,
+            lasso_method, lasso_iter, lasso_tol, rng, xp, mask=mask)
+    else:
+        raise NotImplementedError('Method %s is not yet '
+                                  ' implemented'.format(method))
 
 
-def solve_cd(y, D, alpha, x, tol, minibatch, maxiter, method,
+def solve_block_cd_fullbatch(y, D, alpha, x, tol, maxiter,
+                             lasso_method, lasso_iter, lasso_tol, rng, xp,
+                             mask=None):
+    """ This algorithm is prepared for the reference purpose. """
+    # Normalize first
+    D = normalize.l2_strict(D, axis=-1, xp=xp)
+    # iteration loop
+    for it in range(1, maxiter):
+        try:
+            # lasso
+            it2, x = lasso.solve_fastpath(
+                        y, D, alpha, x=x, tol=lasso_tol,
+                        maxiter=lasso_iter, method=lasso_method,
+                        mask=mask, xp=xp)
+            # Dictionary update
+            xT = x.T
+            if y.dtype.kind == 'c':
+                xT = xp.conj(xT)
+            A = xp.dot(xT, x)
+            B = xp.dot(xT, y)
+            # dictionary update method
+            D_new = D.copy()
+            for k in range(D_new.shape[0]):
+                uk = (B[k] - xp.dot(A[k], D_new)) / A[k, k] + D_new[k]
+                D_new[k] = normalize.l2(uk, xp, axis=-1)
+
+            if xp.sum(xp.abs(D - D_new)) < tol:
+                return it, D_new, x
+            D = D_new
+
+        except KeyboardInterrupt:
+            return it, D, x
+    return maxiter, D, x
+
+
+def solve_cd(y, D, alpha, x, tol, minibatch, maxiter,
              lasso_method, lasso_iter, lasso_tol, rng, xp, mask=None):
     """
-    Mensch ARTHURMENSCH, A., Mairal JULIENMAIRAL, J., & Thirion BETRANDTHIRION,
-    B. (n.d.).
-    Dictionary Learning for Massive Matrix Factorization Gael Varoquaux.
-    Retrieved from http://proceedings.mlr.press/v48/mensch16.pdf
+    Mairal, J., Bach FRANCISBACH, F., Ponce JEANPONCE, J., & Sapiro, G. (n.d.)
+    Online Dictionary Learning for Sparse Coding.
     """
     A = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
     B = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)
 
-    if mask is not None:
-        E = xp.zeros(D.shape[1], dtype=float_type(y.dtype))
-
-    def update_block(D_old):
-        # Original update logic
-        D_new = D_old.copy()
-        for k in range(D_new.shape[0]):
-            uk = (B[k] - xp.dot(A[k], D)) / (A[k, k] + _JITTER) + D_new[k]
-            # normalize
-            if y.dtype.kind == 'c':
-                Unorm = xp.sum(xp.real(xp.conj(uk) * uk))
-            else:
-                Unorm = xp.sum(uk * uk)
-            D_new[k] = uk / xp.maximum(Unorm, 1.0)
-        return D_new
-
-    def update_prallel(D):
-        # Parallelized update logic
-        Adiag = xp.expand_dims(xp.diagonal(A), -1)
-        U = (B - xp.dot(A, D)) / (Adiag + _JITTER) + D
-        # normalize
-        if y.dtype.kind == 'c':
-            Unorm = xp.sum(xp.real(xp.conj(U) * U), axis=-1, keepdims=True)
-        else:
-            Unorm = xp.sum(U * U, axis=-1, keepdims=True)
-        return U / xp.maximum(Unorm, 1.0)
+    # Normalize first
+    D = normalize.l2_strict(D, axis=-1, xp=xp)
 
     # iteration loop
     for it in range(1, maxiter):
@@ -146,23 +158,22 @@ def solve_cd(y, D, alpha, x, tol, minibatch, maxiter, method,
             if y.dtype.kind == 'c':
                 xT = xp.conj(xT)
 
-            it_inv = 1.0 / it
-            A = (1.0 - it_inv) * A + it_inv * xp.dot(xT, x_minibatch)
-            if mask is None:
-                B = (1.0 - it_inv) * B + it_inv * xp.dot(xT, y_minibatch)
-            else:
-                mask_sum = xp.sum(mask_minibatch, axis=0)
-                E = E + mask_sum
-                B = B + 1.0 / E * (xp.dot(xT, y_minibatch * mask_minibatch)
-                                   - mask_sum * B)
+            # equation (11)
+            theta_plus1 = it * minibatch + 1.0
+            beta = (theta_plus1 - minibatch) / theta_plus1
 
-            if method == 'block_cd':
-                D_new = update_block(D)
-            elif method == 'parallel_cd':
-                D_new = update_prallel(D)
+            A = beta * A + xp.dot(xT, x_minibatch)
+            B = beta * B + xp.dot(xT, y_minibatch)
 
-            if xp.max(xp.abs(D - D_new)) < tol:
-                return it, D, x
+            D_new = D.copy()
+            for k in range(D_new.shape[0]):
+                uk = (B[k] - xp.dot(A[k], D_new)) / (A[k, k] + _JITTER)\
+                     + D_new[k]
+                # normalize
+                D_new[k] = normalize.l2(uk, xp, axis=-1)
+
+            if xp.sum(xp.abs(D - D_new)) < tol:
+                return it, D_new, x
             D = D_new
 
         except KeyboardInterrupt:
