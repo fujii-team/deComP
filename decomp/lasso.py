@@ -182,24 +182,24 @@ def soft_threshold_complex(x, y, xp):
     return xp.maximum(xp.abs(x) - y, 0.0) * sign
 
 
-def _update_float(yAt, AAt, x0, L, alpha, xp):
+def _update_float(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
     dx = yAt - xp.tensordot(x0, AAt, axes=1)
-    return soft_threshold_float(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+    return soft_threshold_float(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
-def _update_complex(yAt, AAt, x0, L, alpha, xp):
+def _update_complex(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
     dx = yAt - xp.tensordot(x0, AAt, axes=1)
-    return soft_threshold_complex(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+    return soft_threshold_complex(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
-def _update_float_mask(yAt, A, At, x0, L, alpha, mask, xp):
+def _update_float_mask(yAt, A, At, x0, Lalpha_inv, L_inv, mask, xp):
     dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
-    return soft_threshold_float(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+    return soft_threshold_float(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
-def _update_complex_mask(yAt, A, At, x0, L, alpha, mask, xp):
+def _update_complex_mask(yAt, A, At, x0, Lalpha_inv, L_inv, mask, xp):
     dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
-    return soft_threshold_complex(x0 + 1.0 / (L * alpha) * dx, 1.0 / L, xp)
+    return soft_threshold_complex(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
 def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
@@ -211,12 +211,13 @@ def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
         At = xp.conj(A.T)
         updater = _update_complex
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y, At, axes=1)
 
     for i in range(maxiter):
-        x0_new = updater(yAt, AAt, x0, L, alpha, xp=xp)
+        x0_new = updater(yAt, AAt, x0, Lalpha_inv, L_inv, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
         x0 = x0_new
@@ -233,12 +234,13 @@ def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         At = xp.conj(A.T)
         updater = _update_complex_mask
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
     for i in range(maxiter):
-        x0_new = updater(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
+        x0_new = updater(yAt, A, At, x0, Lalpha_inv, L_inv, mask=mask, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
         x0 = x0_new
@@ -254,7 +256,8 @@ def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
         At = xp.conj(A.T)
         updater = _update_complex
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y, At, axes=1)
 
@@ -262,13 +265,12 @@ def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
     x0_new = x0
     for i in range(maxiter):
         x0 = x0_new
-        x0_new = updater(yAt, AAt, v, L, alpha, xp=xp)
+        x0_new = updater(yAt, AAt, v, Lalpha_inv, L_inv, xp=xp)
         v = x0_new + i / (i + 3) * (x0_new - x0)
 
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
     return maxiter - 1, x0
-
 
 
 def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
@@ -280,7 +282,8 @@ def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         At = xp.conj(A.T)
         updater = _update_complex_mask
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
@@ -288,7 +291,7 @@ def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     x0_new = x0
     for i in range(maxiter):
         x0 = x0_new
-        x0_new = updater(yAt, A, At, v, L, alpha, mask=mask, xp=xp)
+        x0_new = updater(yAt, A, At, v, Lalpha_inv, L_inv, mask=mask, xp=xp)
         v = x0_new + i / (i + 3) * (x0_new - x0)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
@@ -304,14 +307,15 @@ def _solve_fista(y, A, alpha, x0, tol, maxiter, xp):
         At = xp.conj(A.T)
         updater = _update_complex
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y, At, axes=1)
 
     w0 = x0
     beta = 1.0
     for i in range(maxiter):
-        x0_new = updater(yAt, AAt, w0, L, alpha, xp=xp)
+        x0_new = updater(yAt, AAt, w0, Lalpha_inv, L_inv, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
         beta_new = 0.5 * (1.0 + xp.sqrt(1.0 + 4.0 * beta * beta))
@@ -330,14 +334,15 @@ def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         At = xp.conj(A.T)
         updater = _update_complex_mask
     AAt = xp.dot(A, At)
-    L = eigen.spectral_radius_Gershgorin(AAt, xp) / alpha
+    Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
+    L_inv = Lalpha_inv * alpha
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
     w0 = x0
     beta = 1.0
     for i in range(maxiter):
-        x0_new = updater(yAt, A, At, w0, L, alpha, mask=mask, xp=xp)
+        x0_new = updater(yAt, A, At, w0, Lalpha_inv, L_inv, mask=mask, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
         beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
@@ -362,7 +367,8 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     rng = xp.random.RandomState(0)
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
-    L = 1.0 / alpha
+    Lalpha_inv = 1.0
+    L_inv = alpha
     p = int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
         return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
@@ -372,9 +378,9 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     random_mask[:p] = 1.0
 
     for i in range(maxiter):
-        x0_new = updater(yAt, AAt, x0, L, alpha, xp=xp)
+        x0_new = updater(yAt, AAt, x0, Lalpha_inv, L_inv, xp=xp)
         dx = x0_new - x0
-        if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
+        if i % 10 == 0 and xp.max(xp.abs(dx) - tol) < 0.0:
             return i, x0_new
         rng.shuffle(random_mask)
         x0 += dx * random_mask
@@ -397,7 +403,8 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     rng = xp.random.RandomState(0)
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
-    L = 1.0 / alpha
+    Lalpha_inv = 1.0
+    L_inv = alpha
     p = int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
         return _solve_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp)
@@ -407,9 +414,9 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     random_mask[:p] = 1.0
 
     for i in range(maxiter):
-        x0_new = updater(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
+        x0_new = updater(yAt, A, At, x0, Lalpha_inv, L_inv, mask=mask, xp=xp)
         dx = x0_new - x0
-        if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
+        if i % 10 == 0 and xp.max(xp.abs(dx) - tol) < 0.0:
             return i, x0_new
         rng.shuffle(random_mask)
         x0 += dx * random_mask
