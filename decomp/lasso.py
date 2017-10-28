@@ -162,8 +162,7 @@ def soft_threshold_float(x, y, xp):
         0 otherwise
     """
     sign = xp.sign(x)
-    x = xp.abs(x) - y
-    return xp.maximum(x, 0.0) * sign
+    return xp.maximum(xp.abs(x) - y, 0.0) * sign
 
 
 def soft_threshold_complex(x, y, xp):
@@ -180,8 +179,7 @@ def soft_threshold_complex(x, y, xp):
         0 otherwise
     """
     sign = x / (xp.abs(x) + _JITTER)
-    x = xp.abs(x) - y
-    return xp.maximum(x, 0.0) * sign
+    return xp.maximum(xp.abs(x) - y, 0.0) * sign
 
 
 def _update_float(yAt, AAt, x0, L, alpha, xp):
@@ -221,8 +219,7 @@ def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
         x0_new = updater(yAt, AAt, x0, L, alpha, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            x0 = x0_new
+        x0 = x0_new
 
     return maxiter - 1, x0
 
@@ -244,8 +241,7 @@ def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         x0_new = updater(yAt, A, At, x0, L, alpha, mask=mask, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            x0 = x0_new
+        x0 = x0_new
     return maxiter - 1, x0
 
 
@@ -296,8 +292,6 @@ def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         v = x0_new + i / (i + 3) * (x0_new - x0)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            x0 = x0_new
     return maxiter - 1, x0
 
 
@@ -320,11 +314,10 @@ def _solve_fista(y, A, alpha, x0, tol, maxiter, xp):
         x0_new = updater(yAt, AAt, w0, L, alpha, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            beta_new = 0.5 * (1.0 + xp.sqrt(1.0 + 4.0 * beta * beta))
-            w0 = x0_new + (beta - 1.0) / beta_new * (x0_new - x0)
-            x0 = x0_new
-            beta = beta_new
+        beta_new = 0.5 * (1.0 + xp.sqrt(1.0 + 4.0 * beta * beta))
+        w0 = x0_new + (beta - 1.0) / beta_new * (x0_new - x0)
+        x0 = x0_new
+        beta = beta_new
     return maxiter - 1, x0
 
 
@@ -347,11 +340,10 @@ def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         x0_new = updater(yAt, A, At, w0, L, alpha, mask=mask, xp=xp)
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
-            w0 = x0_new + (beta - 1.0) / beta_new * (x0_new - x0)
-            x0 = x0_new
-            beta = beta_new
+        beta_new = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * beta * beta))
+        w0 = x0_new + (beta - 1.0) / beta_new * (x0_new - x0)
+        x0 = x0_new
+        beta = beta_new
     return maxiter - 1, x0_new
 
 
@@ -384,9 +376,8 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
         dx = x0_new - x0
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            rng.shuffle(random_mask)
-            x0 += dx * random_mask
+        rng.shuffle(random_mask)
+        x0 += dx * random_mask
 
     return maxiter - 1, x0
 
@@ -420,9 +411,8 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
         dx = x0_new - x0
         if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
             return i, x0_new
-        else:
-            rng.shuffle(random_mask)
-            x0 += dx * random_mask
+        rng.shuffle(random_mask)
+        x0 += dx * random_mask
 
     return maxiter - 1, x0
 

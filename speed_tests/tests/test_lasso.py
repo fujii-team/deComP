@@ -17,7 +17,7 @@ class LassoData(object):
         v = self.rng.uniform(0.45, 1.0, size=110000).reshape(1100, 100)
         self.mask = xp.rint(v)
         self.alphas = xp.exp(xp.linspace(xp.log(0.1), xp.log(10.0), 5))
-        self.maxiter = 3000
+        self.maxiter = 5000
 
         self.A = self.A.astype(np.float32)
         self.y = self.y.astype(np.float32)
