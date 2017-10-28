@@ -3,6 +3,7 @@ import sys
 try:
     import cupy
     numpy_or_cupy = cupy
+    cupy.cuda.set_allocator(cupy.cuda.MemoryPool().malloc)
 
     def get_array_module(*arrays):
         xp = cupy.get_array_module(arrays[0])

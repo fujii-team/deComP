@@ -277,6 +277,33 @@ class TestLasso_equivalence(TestCase):
                                                                    method)
 
 
+class TestLassoMatrix_float32(TestLasso):
+    def setUp(self):
+        super(TestLassoMatrix_float32, self).setUp()
+        self.A = self.A.astype(np.float32)
+        self.x_true = self.x_true.astype(np.float32)
+        self.y = self.y.astype(np.float32)
+        self.mask = self.mask.astype(np.float32)
+
+    def _test(self, alpha, method):
+        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                            method=method, maxiter=1000)
+        assert it < 1000 - 1, self.message(alpha, method)
+        self.assert_minimum(x, alpha, tol=1.0e-3,
+                            message=self.message(alpha, method))
+        # x should not be all zero
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
+
+    def _test_mask(self, alpha, method):
+        it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                            method=method, maxiter=1000, mask=self.mask)
+        assert it < 1000 - 1, self.message(alpha, method)
+        self.assert_minimum(x, alpha, tol=1.0e-3, mask=self.mask,
+                            message=self.message(alpha, method))
+        # x should not be all zero
+        assert not allclose(x, xp.zeros_like(x)), self.message(alpha, method)
+
+
 class TestLasso_equivalence_complex(TestLasso_equivalence):
     """
     All the methods should get the global minimum.
@@ -285,7 +312,7 @@ class TestLasso_equivalence_complex(TestLasso_equivalence):
         return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
 
 
-class TestLasso_various_alpha(TestCase):
+class TestLasso_bad_condition(TestCase):
     """
     The solution must be found even with various alpha
     """
@@ -294,7 +321,8 @@ class TestLasso_various_alpha(TestCase):
 
     def setUp(self):
         self.rng = xp.random.RandomState(0)
-        self.A = self.randn(9, 10) + self.randn(10) * 0.3
+        # The design matrix is highly correlated
+        self.A = self.randn(9, 10) + self.randn(10) * 0.5
         x_true = self.randn(99) * xp.rint(self.rng.uniform(size=99))
         self.x_true = x_true.reshape(11, 9)
         self.y = xp.dot(self.x_true,
@@ -310,17 +338,20 @@ class TestLasso_various_alpha(TestCase):
                 it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
                                     method=method, maxiter=3000)
                 assert it < 3000 - 1, self.message(alpha, method)
-                self.assert_minimum(x, alpha, tol=1.0e-5)
+                self.assert_minimum(x, alpha, tol=1.0e-5,
+                                    message=self.message(alpha, method))
 
     def test_mask(self):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
         for method in self.methods:
             for alpha in alphas:
+                print(method)
                 it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
                                     method=method, maxiter=3000,
                                     mask=self.mask)
                 assert it < 3000 - 1, self.message(alpha, method)
-                self.assert_minimum(x, alpha, tol=1.0e-5)
+                self.assert_minimum(x, alpha, tol=1.0e-5, mask=self.mask,
+                                    message=self.message(alpha, method))
 
 
 if __name__ == '__main__':

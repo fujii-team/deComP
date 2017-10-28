@@ -11,6 +11,7 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 
 
 AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista', 'parallel_cd']
+_JITTER = 1.0e-15
 
 
 def soft_threshold(x, y, xp):
@@ -32,7 +33,7 @@ def soft_threshold(x, y, xp):
         0 otherwise
     """
     if hasattr(x, 'dtype') and x.dtype.kind == 'c':
-        sign = x / (xp.abs(x) + 1.0e-12 * y)
+        sign = x / (xp.abs(x) + _JITTER)
     else:
         sign = xp.sign(x)
     x = xp.abs(x) - y
@@ -322,7 +323,7 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
     L = 1.0 / alpha
-    p = xp.int(A.shape[0] / rho)  # number of parallel update
+    p = int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
         return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
 
@@ -351,9 +352,9 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     AAt = xp.dot(A, At)
     rho = eigen.spectral_radius_Gershgorin(AAt, xp)
     L = 1.0 / alpha
-    p = xp.int(A.shape[0] / rho)  # number of parallel update
+    p = int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
-        return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
+        return _solve_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp)
 
     yAt = xp.tensordot(y * mask, At, axes=1)
 
