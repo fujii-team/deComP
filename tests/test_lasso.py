@@ -255,7 +255,6 @@ class TestLasso_equivalence(TestCase):
             it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000)
             assert it < 1000 - 1, self.message(self.alpha, method)
-            assert it != self.it, self.message(self.alpha, method)
 
             if method != 'fista':
                 assert allclose(x, self.x, atol=1.0e-5),\
@@ -269,7 +268,6 @@ class TestLasso_equivalence(TestCase):
             it, x = lasso.solve(self.y, self.A, alpha=self.alpha, tol=1.0e-6,
                                 method=method, maxiter=1000, mask=self.mask)
             assert it < 1000 - 1, self.message(self.alpha, method)
-            assert it != self.mask_it, self.message(self.alpha, method)
 
             if method != 'fista':
                 assert allclose(x - self.mask_x, 0.0, atol=1.0e-4),\
