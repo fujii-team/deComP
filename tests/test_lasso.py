@@ -322,7 +322,7 @@ class TestLasso_bad_condition(TestCase):
     def setUp(self):
         self.rng = xp.random.RandomState(0)
         # The design matrix is highly correlated
-        self.A = self.randn(9, 10) + self.randn(10) * 0.5
+        self.A = self.randn(9, 10) + self.randn(10) * 0.3
         x_true = self.randn(99) * xp.rint(self.rng.uniform(size=99))
         self.x_true = x_true.reshape(11, 9)
         self.y = xp.dot(self.x_true,
@@ -335,7 +335,7 @@ class TestLasso_bad_condition(TestCase):
         alphas = np.exp(np.linspace(np.log(0.1), np.log(10.0), 3))
         for method in self.methods:
             for alpha in alphas:
-                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                                     method=method, maxiter=3000)
                 assert it < 3000 - 1, self.message(alpha, method)
                 self.assert_minimum(x, alpha, tol=1.0e-5,
@@ -346,7 +346,7 @@ class TestLasso_bad_condition(TestCase):
         for method in self.methods:
             for alpha in alphas:
                 print(method)
-                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-4,
+                it, x = lasso.solve(self.y, self.A, alpha=alpha, tol=1.0e-6,
                                     method=method, maxiter=3000,
                                     mask=self.mask)
                 assert it < 3000 - 1, self.message(alpha, method)
