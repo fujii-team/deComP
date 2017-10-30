@@ -178,8 +178,9 @@ def soft_threshold_complex(x, y, xp):
         (r - y) * exp(1j * phi) if r > y
         0 otherwise
     """
-    sign = x / (xp.abs(x) + _JITTER)
-    return xp.maximum(xp.abs(x) - y, 0.0) * sign
+    abs_x = xp.abs(x)
+    sign = x / (abs_x + _JITTER)
+    return xp.maximum(abs_x - y, 0.0) * sign
 
 
 def _update_float(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
