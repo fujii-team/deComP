@@ -52,3 +52,6 @@ doc/generated
 
 # analysis folder
 analysis
+
+# benchmark folder
+.benchmarks

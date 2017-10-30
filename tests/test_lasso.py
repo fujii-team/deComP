@@ -13,20 +13,20 @@ class TestUtils(unittest.TestCase):
 
     def test_soft_threshold(self):
         # test with scalar
-        actual = lasso.soft_threshold(0.1, 1.0, xp=np)
+        actual = lasso.soft_threshold_float(0.1, 1.0, xp=np)
         expected = 0.0
         self.assertTrue(allclose(actual, expected))
 
         # test with 1d-array
-        actual = lasso.soft_threshold(xp.array([0.1, -2.0, 1.4]),
-                                      1.0, xp=xp)
+        actual = lasso.soft_threshold_float(xp.array([0.1, -2.0, 1.4]),
+                                            1.0, xp=xp)
         expected = [0.0, -1.0, 0.4]
         self.assertTrue(allclose(actual, expected))
 
         # test with 2d-array
-        actual = lasso.soft_threshold(xp.array([[0.1, -2.0, 1.4],
-                                                [1.1, 3.0, -1.4]]),
-                                      1.0, xp=xp)
+        actual = lasso.soft_threshold_float(xp.array([[0.1, -2.0, 1.4],
+                                                      [1.1, 3.0, -1.4]]),
+                                                     1.0, xp=xp)
         expected = [[0.0, -1.0, 0.4],
                     [0.1, 2.0, -0.4]]
         self.assertTrue(allclose(actual, expected))
@@ -35,22 +35,22 @@ class TestUtils(unittest.TestCase):
         # test with 1d-array
         # real
         x = xp.array([0.1, -2.0, 1.4])
-        actual = lasso.soft_threshold(x + 0.0j, 1.0, xp)
-        expected = lasso.soft_threshold(x, 1.0, xp)
+        actual = lasso.soft_threshold_complex(x + 0.0j, 1.0, xp)
+        expected = lasso.soft_threshold_complex(x, 1.0, xp)
         self.assertTrue(allclose(actual, expected))
         # imag
-        actual = lasso.soft_threshold(x * 1.0j, 1.0, xp)
-        expected = lasso.soft_threshold(x, 1.0, xp) * 1.0j
+        actual = lasso.soft_threshold_complex(x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold_complex(x, 1.0, xp) * 1.0j
         self.assertTrue(allclose(actual, expected))
 
         # 45deg
-        actual = lasso.soft_threshold(x + x * 1.0j, 1.0, xp)
-        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0, xp)\
+        actual = lasso.soft_threshold_complex(x + x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold_complex(x * np.sqrt(2.0), 1.0, xp)\
             * (np.sqrt(0.5) + np.sqrt(0.5) * 1.0j)
         self.assertTrue(allclose(actual, expected))
         # -45deg
-        actual = lasso.soft_threshold(x - x * 1.0j, 1.0, xp)
-        expected = lasso.soft_threshold(x * np.sqrt(2.0), 1.0, xp)\
+        actual = lasso.soft_threshold_complex(x - x * 1.0j, 1.0, xp)
+        expected = lasso.soft_threshold_float(x * np.sqrt(2.0), 1.0, xp)\
             * (np.sqrt(0.5) - np.sqrt(0.5) * 1.0j)
         self.assertTrue(allclose(actual, expected))
 
@@ -310,6 +310,46 @@ class TestLasso_equivalence_complex(TestLasso_equivalence):
     """
     def randn(self, *shape):
         return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
+
+
+class TestLasso_equivalence_illcondition(TestLasso_equivalence):
+    """
+    With an ill-conditioned problem with regularization.
+    """
+    @property
+    def alpha(self):
+        return 0.5
+
+    def setUp(self):
+        self.rng = xp.random.RandomState(0)
+        self.A = self.randn(8, 5)
+        x_true = self.randn(10 * 8) * xp.rint(self.rng.uniform(size=10 * 8))
+        self.x_true = x_true.reshape(10, 8)
+        self.y = xp.dot(self.x_true,
+                        self.A) + self.randn(10, 5) * 0.1
+        v = self.rng.uniform(0.45, 1.0, size=10 * 5).reshape(10, 5)
+        self.mask = xp.rint(v)
+
+        self.it, self.x = lasso.solve(
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
+                    method='ista', maxiter=1000)
+        self.mask_it, self.mask_x = lasso.solve(
+                    self.y, self.A, alpha=self.alpha, tol=1.0e-6,
+                    method='ista', maxiter=1000, mask=self.mask)
+        self.methods = list(lasso.AVAILABLE_METHODS)
+        self.methods.remove('ista')
+
+
+class TestLasso_equivalence_illcondition_complex(TestLasso_equivalence):
+    """
+    All the methods should get the global minimum.
+    """
+    def randn(self, *shape):
+        return self.rng.randn(*shape) + self.rng.randn(*shape) * 1.0j
+
+    @property
+    def alpha(self):
+        return 1.0
 
 
 class TestLasso_bad_condition(TestCase):
