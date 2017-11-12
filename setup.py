@@ -32,6 +32,7 @@ setup(name='decomp',
       test_suite='tests',
       install_requires="""
         numpy>=1.11
+        chainer>=3.0
         """,
       classifiers=['License :: OSI Approved :: BSD License',
                    'Natural Language :: English',

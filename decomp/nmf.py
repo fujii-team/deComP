@@ -85,7 +85,7 @@ def solve_multiplicative(y, D, x, tol, minibatch, maxiter,
                          method, rng, xp, mask):
     """ NMF with multiplicative update """
     for it in range(1, maxiter):
-        indexes = minibatch_index(y.shape, minibatch, rng)
+        indexes = minibatch_index(y.shape[:-1], minibatch, rng)
         x_minibatch = x[indexes]
         y_minibatch = y[indexes]
         mask_minibatch = mask[indexes]

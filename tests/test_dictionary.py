@@ -41,7 +41,7 @@ class TestFloat(unittest.TestCase):
 
     def test_run(self):
         D = self.D.copy()
-        alpha = 0.01
+        alpha = 0.1
         maxiter = 1000
         it, D, x = dic.solve(self.y, D, alpha, x=None, tol=1.0e-4,
                              method=self.method,
@@ -73,7 +73,7 @@ class TestFloat(unittest.TestCase):
                                 random_seed=0)
         self.assertFalse(allclose(D, D2, atol=1.0e-4))
     """
-    
+
 
 class TestComplex(TestFloat):
     def randn(self, *shape):
@@ -82,7 +82,7 @@ class TestComplex(TestFloat):
     def error(self, x, D, alpha, mask=None):
         mask = xp.ones(self.y.shape, dtype=float) if mask is None else mask
         alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
-        D = D / xp.maximum(xp.real(xp.sum(xp.conj(D) * D, axis=0)), 1.0)
+        D = normalize.l2(D, axis=-1, xp=xp)
         loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
                 self.y - xp.tensordot(x, D, axes=1))) * mask)
         return loss + xp.sum(xp.abs(x))

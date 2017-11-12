@@ -65,7 +65,6 @@ def solve(y, D, alpha, x=None, tol=1.0e-3,
     assertion.assert_shapes('y', y, 'D', D, axes=[-1])
     assertion.assert_shapes('y', y, 'mask', mask)
 
-    D = normalize.l2_strict(D, xp, axis=-1)
     return solve_fastpath(y, D, alpha, x, tol, minibatch, maxiter, method,
                           lasso_method, lasso_iter, lasso_tol, rng, xp,
                           mask=mask)
@@ -140,7 +139,7 @@ def solve_cd(y, D, alpha, x, tol, minibatch, maxiter,
     # iteration loop
     for it in range(1, maxiter):
         try:
-            indexes = minibatch_index(y.shape, minibatch, rng)
+            indexes = minibatch_index(y.shape[:-1], minibatch, rng)
             x_minibatch = x[indexes]
             y_minibatch = y[indexes]
             mask_minibatch = None if mask is None else mask[indexes]
@@ -172,7 +171,7 @@ def solve_cd(y, D, alpha, x, tol, minibatch, maxiter,
                 # normalize
                 D_new[k] = normalize.l2(uk, xp, axis=-1)
 
-            if xp.sum(xp.abs(D - D_new)) < tol:
+            if xp.max(xp.abs(D - D_new)) < tol:
                 return it, D_new, x
             D = D_new
 
