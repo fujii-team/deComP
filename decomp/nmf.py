@@ -2,14 +2,14 @@ import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils.dtype import float_type
 from .utils.data import minibatch_index
-from .utils import assertion
+from .utils import assertion, normalize
 
 
 _JITTER = 1.0e-10
 
 
 def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000,
-          method='multiplicative', mask=None, random_seed=None):
+          likelihood='square', mask=None, random_seed=None):
     """
     Non-negative matrix factrization.
 
@@ -52,10 +52,7 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000,
 
     rng = np.random.RandomState(random_seed)
     if x is None:
-        x = xp.ones(y.shape[:-1] + (D.shape[0], ), dtype=y.dtype)
-
-    if mask is None:
-        mask = xp.ones(y.shape, dtype=float_type(y.dtype))
+        x = xp.ones((y.shape[0], D.shape[0]), dtype=y.dtype)
 
     assertion.assert_dtypes(y=y, D=D, x=x)
     assertion.assert_dtypes(y=y, D=D, x=x, mask=mask, dtypes='f')
@@ -66,42 +63,46 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000,
     assertion.assert_ndim('D', D, 2)
     assertion.assert_ndim('x', x, 2)
 
-    return solve_fastpath(y, D, x, tol, minibatch, maxiter,
-                          method, rng, xp, mask)
+    return solve_fastpath(y, D, x, tol, minibatch, maxiter, likelihood,
+                          rng, xp, mask)
 
 
 def solve_fastpath(y, D, x, tol, minibatch, maxiter,
-                   method, rng, xp, mask):
+                   likelihood, rng, xp, mask):
     """ Fast path for NMF """
-    if method == "multiplicative":
-        return solve_multiplicative(y, D, x, tol, minibatch, maxiter,
-                                    method, rng, xp, mask)
+    D = normalize.l2_strict(D, axis=-1, xp=xp)
+    if mask is None:
+        if likelihood == 'square':
+            return solve_square(y, D, x, tol, minibatch, maxiter, rng, xp)
+        else:
+            raise NotImplementedError('NMF with {0:s} likelihood is not yet '
+                                      'implemented'.format(likelihood))
     else:
-        raise NotImplementedError('Method {0:s} is not yet implemented'.format(
-                                                                method))
+        raise NotImplementedError('NMF with mask is not yet implemented.')
 
 
-def solve_multiplicative(y, D, x, tol, minibatch, maxiter,
-                         method, rng, xp, mask):
-    """ NMF with multiplicative update """
+def solve_square(y, D, x, tol, minibatch, maxiter, rng, xp):
+    """ NMF with square sum likelihood """
+    xx_sum = xp.zeros((D.shape[0], D.shape[0]), dtype=y.dtype)
+    xy_sum = xp.zeros((D.shape[0], D.shape[1]), dtype=y.dtype)
+
     for it in range(1, maxiter):
-        indexes = minibatch_index(y.shape[:-1], minibatch, rng)
+        indexes = minibatch_index(y.shape[:1], minibatch, rng)
         x_minibatch = x[indexes]
         y_minibatch = y[indexes]
-        mask_minibatch = mask[indexes]
         # update x
-        ymu = xp.dot(x_minibatch, D) * mask_minibatch
+        ymu = xp.dot(x_minibatch, D)
         x_minibatch = x_minibatch * (xp.dot(y_minibatch, D.T) /
-                                     xp.maximum(xp.dot(ymu, D.T), _JITTER))
-        # update D
-        ymu = xp.dot(x_minibatch, D) * mask_minibatch
-        U = D * (xp.dot(x_minibatch.T, y_minibatch) /
-                 xp.maximum(xp.dot(x_minibatch.T, ymu), _JITTER))
-        # normalize
-        Unorm = xp.sum(U * U, axis=-1, keepdims=True)
-        D_new = U / xp.maximum(Unorm, 1.0)
-
+                                     xp.dot(ymu, D.T))
         x[indexes] = x_minibatch
+
+        xx_sum += xp.dot(x_minibatch.T, x_minibatch) / it
+        xy_sum += xp.dot(x_minibatch.T, y_minibatch) / it
+
+        # update D
+        U = D * xy_sum / xp.dot(xx_sum, D)
+        D_new = normalize.l2(U, axis=-1, xp=xp)
+
         if xp.max(xp.abs(D - D_new)) < tol:
             return it, D, x
         D = D_new
