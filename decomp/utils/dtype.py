@@ -1,6 +1,7 @@
 import numpy as np
 from .exceptions import DtypeMismatchError
 
+
 def float_type(dtype):
     """ Convert to equivalent float type """
     if dtype.kind == 'f':
