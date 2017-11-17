@@ -2,16 +2,19 @@ import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils.data import minibatch_index
 from .utils import assertion, normalize
+from .nmf_methods import batch_mu, serizel
 
 
-AVAILABLE_METHODS = ['multiplicative', 'spgd']
+BATCH_METHODS = ['mu']  # , 'spgd']
+MINIBATCH_METHODS = [
+    'asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu',  # Romain Serizel et al
+    '',  # H. Kasai et al
+    ]
 _JITTER = 1.0e-15
 
 
-def solve(y, D, x=None, tol=1.0e-3,
-          minibatch=None, maxiter=1000, method='multiplicative',
-          likelihood='l2', minibatch_iter=100, mask=None,
-          random_seed=None):
+def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
+          likelihood='l2', mask=None, random_seed=None, **kwargs):
     """
     Non-negative matrix factrization.
 
@@ -38,7 +41,7 @@ def solve(y, D, x=None, tol=1.0e-3,
     method: string
         One of AVAILABLE_METHODS
     likelihood: string
-        One of ['l2']
+        One of ['l2', 'kl', 'poisson']
 
     mask: an array-like of Boolean (or integer, float)
         The missing point should be zero. One for otherwise.
@@ -48,7 +51,6 @@ def solve(y, D, x=None, tol=1.0e-3,
     # Check all the class are numpy or cupy
     xp = get_array_module(y, D, x)
 
-    rng = np.random.RandomState(random_seed)
     if x is None:
         x = xp.ones((y.shape[0], D.shape[0]), dtype=y.dtype)
 
@@ -67,117 +69,23 @@ def solve(y, D, x=None, tol=1.0e-3,
         assertion.assert_nonnegative(y)
 
     D = normalize.l2_strict(D, axis=-1, xp=xp)
-    if method == 'multiplicative':
-        if mask is None:
-            gradients_x = {'l2': _grad_x_l2,
-                           'kl': _grad_x_kl,
-                           'poisson', _grad_x_kl}
-            gradients_d = {'l2': _grad_d_l2,
-                           'kl': _grad_d_kl,
-                           'poisson', _grad_d_kl}
-        else:
-            gradients_x = {'l2': _grad_x_l2_mask,
-                           'kl': _grad_x_kl_mask,
-                           'poisson', _grad_x_kl_mask}
-            gradients_d = {'l2': _grad_d_l2_mask,
-                           'kl': _grad_d_kl_mask,
-                           'poisson', _grad_d_kl_mask}
 
-        if minibatch is None:
-            return multiplicative_fullbatch(y, D, x, tol, maxiter, mask, xp,
-                                            grad_x=gradients_x[likelihood],
-                                            grad_D=gradients_d[likelihood])
-        else:
-            raise NotImplementedError('NMF with minibatch is not yet '
-                                      'implemented.')
-            return multiplicative_minibatch(
-                y, D, x, tol, maxiter, mask, minibatch, minibatch_iter,
-                rng, xp,
-                grad_x=gradients_x[likelihood],
-                grad_D=gradients_d[likelihood])
-    else:
-        raise NotImplementedError('NMF with {} algorithm is not yet '
+    # batch methods
+    if minibatch is None:
+        if method == 'mu':
+            return batch_mu.solve(y, D, x, tol, maxiter, likelihood, mask, xp,
+                                  **kwargs)
+        raise NotImplementedError('Batch-NMF with {} algorithm is not yet '
                                   'implemented.'.format(method))
 
+    # minibatch methods
+    rng = np.random.RandomState(random_seed)
+    if method in ['asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu']:
+        return serizel.solve(y, D, x, tol, minibatch, maxiter, method,
+                             likelihood, mask, rng, xp, **kwargs)
+    raise NotImplementedError('NMF with {} algorithm is not yet '
+                              'implemented.'.format(method))
 
-# --- l2 loss ---
-def _grad_x_l2(y, x, d, mask, xp):
-    """ Multiplicative update rule for square loss.
-    Returns Positive (numerator) and negative (denominator).
-    mask is not used.
-    """
-    f = xp.dot(x, d)
-    return xp.dot(y, d.T), xp.dot(f, d.T)
-
-
-def _grad_d_l2(y, x, d, mask, xp):
-    """ update d with l2 loss """
-    f = xp.dot(x, d)
-    return xp.dot(x.T, y), xp.dot(x.T, f)
-
-
-def _grad_x_l2_mask(y, x, d, mask, xp):
-    """ Multiplicative update rule for square loss.
-    Returns Positive (numerator) and negative (denominator).
-    mask is not used.
-    """
-    f = xp.dot(x, d) * mask
-    y = y * mask
-    return xp.dot(y, d.T), xp.dot(f, d.T)
-
-
-def _grad_d_l2_mask(y, x, d, mask, xp):
-    """ update d with l2 loss """
-    f = xp.dot(x, d) * mask
-    y = y * mask
-    return xp.dot(x.T, y), xp.dot(x.T, f)
-
-
-# --- KL loss ---
-def _grad_x_kl(y, x, d, mask, xp):
-    """ Multiplicative update rule for KL loss.    """
-    f = xp.dot(x, d) + _JITTER
-    return xp.dot(y / f, d.T), xp.sum(d.T, axis=0, keepdims=True)
-
-
-def _grad_d_kl(y, x, d, mask, xp):
-    """ update d with KL loss """
-    f = xp.dot(x, d) + _JITTER
-    return xp.dot(x.T, y / f), xp.sum(x.T, axis=1, keepdims=True)
-
-
-def _grad_x_kl_mask(y, x, d, mask, xp):
-    """ Multiplicative update rule for KL loss with mask. """
-    f = xp.dot(x, d) + _JITTER
-    y = y * mask
-    return xp.dot(y / f, d.T), xp.dot(mask, d.T)
-
-
-def _grad_d_kl_mask(y, x, d, mask, xp):
-    """ update d with l2 loss """
-    f = xp.dot(x, d) + _JITTER
-    y = y * mask
-    return xp.dot(x.T, y / f), xp.dot(x.T, mask)
-
-
-def multiplicative_fullbatch(y, D, x, tol, maxiter, mask, xp, grad_x, grad_D):
-    """ NMF with fullbatch update """
-    for it in range(1, maxiter):
-        # update x
-        grad_x_pos, grad_x_neg = grad_x(y, x, D, mask, xp)
-        x = x * xp.maximum(grad_x_pos, 0.0) / xp.maximum(grad_x_neg, _JITTER)
-        # update D
-        grad_D_pos, grad_D_neg = grad_D(y, x, D, mask, xp)
-        U = D * xp.maximum(grad_D_pos, 0.0) / xp.maximum(grad_D_neg, _JITTER)
-        D_new = normalize.l2_strict(U, axis=-1, xp=xp)
-        if it % 100 == 0:
-            print(xp.max(xp.abs(D - D_new)))
-
-        if xp.max(xp.abs(D - D_new)) < tol:
-            return it, D_new, x
-        D = D_new
-
-    return maxiter, D, x
 
 
 def multiplicative_minibatch(y, D, x, tol, maxiter, mask, minibatch,
@@ -185,7 +93,7 @@ def multiplicative_minibatch(y, D, x, tol, maxiter, mask, minibatch,
     """ NMF with minibatch update
     from
     """
-    forget_rate = 0.1
+    forget_rate = 1.0
     grad_D_pos_sum = xp.zeros_like(D)
     grad_D_neg_sum = xp.zeros_like(D)
 

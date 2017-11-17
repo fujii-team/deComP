@@ -5,17 +5,19 @@ import decomp.nmf as nmf
 from .testings import allclose
 
 
-class Test_L2(unittest.TestCase):
+class Test_NMF(unittest.TestCase):
+    """ Test for Multiplicative Batch algorithm with L2 likilihood. """
     def randn(self, *shape):
         return self.rng.randn(*shape)
 
-    @property
-    def likelihood(self):
-        return 'l2'
-
     def get_y(self, x, d):
         ytrue = xp.dot(x, d)
-        return ytrue + self.randn(*ytrue.shape) * 0.1
+        if self.likelihood == 'l2':
+            return ytrue + self.randn(*ytrue.shape) * 0.1
+        elif self.likelihood == 'kl':  # KL
+            return ytrue + xp.abs(self.randn(*ytrue.shape)) * 0.1
+        raise NotImplementedError('Likelihood {} is not implemented'.format(
+                                                            self.likelihood))
 
     def setUp(self):
         self.rng = xp.random.RandomState(0)
@@ -31,8 +33,14 @@ class Test_L2(unittest.TestCase):
     def error(self, x, D, mask):
         mask = xp.ones(self.y.shape, self.y.dtype) if mask is None else mask
         D = normalize.l2_strict(D, axis=-1, xp=xp)
-        loss = xp.sum(xp.square(self.y - xp.dot(x, D)) * mask)
-        return 0.5 * loss
+        if self.likelihood == 'l2':
+            loss = xp.sum(xp.square(self.y - xp.dot(x, D)) * mask)
+            return 0.5 * loss
+        elif self.likelihood == 'kl':  # KL
+            f = xp.maximum(xp.dot(x, D), 1.0e-15)
+            return xp.sum((- self.y * xp.log(f) + f) * mask)
+        raise NotImplementedError('Likelihood {} is not implemented'.format(
+                                                            self.likelihood))
 
     def assert_minimum(self, x, D, tol, n=100, mask=None):
         loss = self.error(x, D, mask)
@@ -46,77 +54,139 @@ class Test_L2(unittest.TestCase):
     def maxiter(self):
         return 3000
 
-    @property
-    def minibatch_maxiter(self):
-        return 1000
+
+class FullbatchMixin(object):
+    def run_fullbatch(self, mask):
+        D = self.D.copy()
+        it, D, x = nmf.solve(self.y, D, x=None, tol=1.0e-6,
+                             minibatch=None, maxiter=self.maxiter,
+                             method=self.method,
+                             likelihood=self.likelihood, mask=mask,
+                             random_seed=0)
+        assert it < self.maxiter - 1
+        self.assert_minimum(x, D, tol=1.0e-5, n=100, mask=mask)
+        assert not allclose(D, xp.zeros_like(D), atol=1.0e-5)
 
     def test_run(self):
-        D = self.D.copy()
-        it, D, x = nmf.solve(self.y, D, x=None, tol=1.0e-6,
-                             minibatch=None, maxiter=self.maxiter,
-                             method='multiplicative',
-                             likelihood=self.likelihood, mask=None,
-                             random_seed=0)
-        assert it < self.maxiter - 1
-        self.assert_minimum(x, D, tol=1.0e-5, n=100)
-        assert not allclose(D, xp.zeros_like(D), atol=1.0e-5)
+        self.run_fullbatch(mask=None)
 
     def test_run_mask(self):
-        D = self.D.copy()
-        it, D, x = nmf.solve(self.y, D, x=None, tol=1.0e-6,
-                             minibatch=None, maxiter=self.maxiter,
-                             method='multiplicative',
-                             likelihood=self.likelihood, mask=self.mask,
-                             random_seed=0)
-        assert it < self.maxiter - 1
-        self.assert_minimum(x, D, tol=1.0e-5, n=100, mask=self.mask)
-        assert not allclose(D, xp.zeros_like(D), atol=1.0e-5)
-
-    def _test_run_minibatch(self):
-        D_minibatch = self.D.copy()
-        it, D_minibatch, x_minibatch = nmf.solve(
-                     self.y, D_minibatch, x=None, tol=1.0e-3,
-                     minibatch=10, maxiter=self.minibatch_maxiter,
-                     minibatch_iter=1,
-                     method='multiplicative',
-                     likelihood=self.likelihood, mask=None,
-                     random_seed=0)
-        assert it < self.minibatch_maxiter - 1
-        print(D)
-        print(D - D_minibatch)
-        assert allclose(D, D_minibatch, atol=1.0e-2)
-
-    '''
-    def test_run_minibatch_mask(self):
-        D = self.D.copy()
-        y = self.mask * self.y
-        it, D, x = nmf.solve(self.y, D, minibatch=10, maxiter=1000,
-                             tol=1.0e-6, mask=self.mask, random_seed=0)
-        self.assertTrue(it < 1000 - 1)
-        self.assert_minimum(x, D, tol=1.0e-5, n=3)
-        # make sure that the solution is different from
-        D = self.D.copy()
-        it2, D2, x2 = nmf.solve(self.y, D, minibatch=10, maxiter=1000,
-                                tol=1.0e-6, mask=None, random_seed=0)
-        self.assertFalse(allclose(D, D2, atol=1.0e-4))
-    '''
+        self.run_fullbatch(mask=self.mask)
 
 
-class Test_KL(Test_L2):
+class TestFullbatch_L2(Test_NMF, FullbatchMixin):
+    @property
+    def method(self):
+        return 'mu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class TestFullbatch_KL(TestFullbatch_L2):
     @property
     def likelihood(self):
         return 'kl'
 
-    def get_y(self, x, d):
-        ytrue = xp.dot(x, d)
-        return ytrue + xp.abs(self.randn(*ytrue.shape) * 0.1)
 
-    def error(self, x, D, mask):
-        mask = xp.ones(self.y.shape, self.y.dtype) if mask is None else mask
-        D = normalize.l2_strict(D, axis=-1, xp=xp)
-        f = xp.maximum(xp.dot(x, D), 1.0e-15)
-        return xp.sum((self.y * xp.log(xp.maximum(self.y, 1.0e-15) / f)
-                      + f) * mask)
+class MinibatchMixin(object):
+    def run_minibatch(self, mask):
+        D = self.D.copy()
+        start_iter = 100
+        it, D, x = nmf.solve(
+                     self.y, D, x=None, tol=1.0e-6,
+                     minibatch=30, maxiter=start_iter,
+                     method=self.method,
+                     likelihood=self.likelihood, mask=mask,
+                     random_seed=0)
+        start_error = self.error(x, D, mask=mask)
+        assert not allclose(D, xp.zeros_like(D), atol=1.0e-5)
+
+        it, D, x = nmf.solve(
+                     self.y, D, x=x, tol=1.0e-6,
+                     minibatch=30, maxiter=self.maxiter,
+                     method=self.method,
+                     likelihood=self.likelihood, mask=mask,
+                     random_seed=0)
+        # just make sure the loss is decreasing
+        assert self.error(x, D, mask=mask) < start_error
+        assert not allclose(D, xp.zeros_like(D), atol=1.0e-5)
+
+    def test_run_minibatch(self):
+        self.run_minibatch(mask=None)
+
+    def test_run_minibatch_mask(self):
+        self.run_minibatch(mask=self.mask)
+
+    @property
+    def maxiter(self):
+        return 300
+
+
+class Test_ASG_MU_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'asg-mu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class Test_ASG_MU_KL(Test_ASG_MU_L2):
+    @property
+    def likelihood(self):
+        return 'kl'
+
+
+class Test_GSG_MU_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'gsg-mu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class Test_GSG_MU_KL(Test_GSG_MU_L2):
+    @property
+    def likelihood(self):
+        return 'kl'
+
+
+class Test_ASAG_MU_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'asag-mu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class Test_ASAG_MU_KL(Test_ASAG_MU_L2):
+    @property
+    def likelihood(self):
+        return 'kl'
+
+
+class Test_GSAG_MU_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'gsag-mu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class Test_GSAG_MU_KL(Test_GSAG_MU_L2):
+    @property
+    def likelihood(self):
+        return 'kl'
+
 
 
 if __name__ == '__main__':
