@@ -33,25 +33,25 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
     grad_d = gradients_d[likelihood] if grad_d is None else grad_d
 
     if method == 'asg-mu':
-        return solve_asg_mu(y, D, x, tol, minibatch, maxiter, method,
-                            likelihood, mask, rng, xp, grad_x, grad_d)
+        return solve_asg_mu(y, D, x, tol, minibatch, maxiter,
+                            mask, rng, xp, grad_x, grad_d)
     elif method == 'gsg-mu':
-        return solve_asg_mu(y, D, x, tol, minibatch, maxiter, method,
-                            likelihood, mask, rng, xp, grad_x, grad_d)
+        return solve_asg_mu(y, D, x, tol, minibatch, maxiter,
+                            mask, rng, xp, grad_x, grad_d)
     elif method == 'asag-mu':
-        return solve_asag_mu(y, D, x, tol, minibatch, maxiter, method,
-                             likelihood, mask, rng, xp, grad_x, grad_d,
+        return solve_asag_mu(y, D, x, tol, minibatch, maxiter,
+                             mask, rng, xp, grad_x, grad_d,
                              forget_rate)
     elif method == 'gsag-mu':
-        return solve_gsag_mu(y, D, x, tol, minibatch, maxiter, method,
-                             likelihood, mask, rng, xp, grad_x, grad_d,
+        return solve_gsag_mu(y, D, x, tol, minibatch, maxiter,
+                             mask, rng, xp, grad_x, grad_d,
                              forget_rate)
     raise NotImplementedError('NMF with {} algorithm is not yet '
                               'implemented.'.format(method))
 
 
-def solve_asg_mu(y, D, x, tol, minibatch, maxiter, method,
-                 likelihood, mask, rng, xp, grad_x, grad_d):
+def solve_asg_mu(y, D, x, tol, minibatch, maxiter,
+                 mask, rng, xp, grad_x, grad_d):
     """ Algorithm 5 in the paper """
     minibatch_index = MinibatchEpochIndex(len(y), minibatch, rng, xp)
 
@@ -82,8 +82,8 @@ def solve_asg_mu(y, D, x, tol, minibatch, maxiter, method,
     return maxiter, D, x
 
 
-def solve_gsg_mu(y, D, x, tol, minibatch, maxiter, method,
-                 likelihood, mask, rng, xp, grad_x, grad_d):
+def solve_gsg_mu(y, D, x, tol, minibatch, maxiter,
+                 mask, rng, xp, grad_x, grad_d):
     """ Algorithm 6 in the paper """
     minibatch_index = MinibatchEpochIndex(len(y), minibatch, rng, xp)
 
@@ -114,8 +114,8 @@ def solve_gsg_mu(y, D, x, tol, minibatch, maxiter, method,
     return maxiter, D, x
 
 
-def solve_asag_mu(y, D, x, tol, minibatch, maxiter, method,
-                  likelihood, mask, rng, xp, grad_x, grad_d, forget_rate):
+def solve_asag_mu(y, D, x, tol, minibatch, maxiter,
+                  mask, rng, xp, grad_x, grad_d, forget_rate):
     """ Algorithm 7 in the paper """
     minibatch_index = MinibatchEpochIndex(len(y), minibatch, rng, xp)
 
@@ -154,8 +154,8 @@ def solve_asag_mu(y, D, x, tol, minibatch, maxiter, method,
     return maxiter, D, x
 
 
-def solve_gsag_mu(y, D, x, tol, minibatch, maxiter, method,
-                  likelihood, mask, rng, xp, grad_x, grad_d, forget_rate):
+def solve_gsag_mu(y, D, x, tol, minibatch, maxiter, 
+                  mask, rng, xp, grad_x, grad_d, forget_rate):
     """ Algorithm 7 in the paper """
     minibatch_index = MinibatchEpochIndex(len(y), minibatch, rng, xp)
 

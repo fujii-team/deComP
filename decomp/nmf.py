@@ -2,13 +2,13 @@ import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils.data import minibatch_index
 from .utils import assertion, normalize
-from .nmf_methods import batch_mu, serizel
+from .nmf_methods import batch_mu, serizel, kasai
 
 
 BATCH_METHODS = ['mu']  # , 'spgd']
 MINIBATCH_METHODS = [
     'asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu',  # Romain Serizel et al
-    '',  # H. Kasai et al
+    'svrmu', 'svrmu-acc',  # H. Kasai et al
     ]
 _JITTER = 1.0e-15
 
@@ -83,6 +83,10 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
     if method in ['asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu']:
         return serizel.solve(y, D, x, tol, minibatch, maxiter, method,
                              likelihood, mask, rng, xp, **kwargs)
+    if method in ['svrmu', 'svrmu-acc']:
+        return kasai.solve(y, D, x, tol, minibatch, maxiter, method,
+                           likelihood, mask, rng, xp, **kwargs)
+
     raise NotImplementedError('NMF with {} algorithm is not yet '
                               'implemented.'.format(method))
 

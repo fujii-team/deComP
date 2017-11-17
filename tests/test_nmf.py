@@ -93,7 +93,7 @@ class TestFullbatch_KL(TestFullbatch_L2):
 class MinibatchMixin(object):
     def run_minibatch(self, mask):
         D = self.D.copy()
-        start_iter = 100
+        start_iter = 30
         it, D, x = nmf.solve(
                      self.y, D, x=None, tol=1.0e-6,
                      minibatch=30, maxiter=start_iter,
@@ -122,6 +122,32 @@ class MinibatchMixin(object):
     @property
     def maxiter(self):
         return 300
+
+
+class Test_SVRMU_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'svrmu'
+
+    @property
+    def likelihood(self):
+        return 'l2'
+
+
+class Test_SVRMU_KL(Test_SVRMU_L2):
+    @property
+    def likelihood(self):
+        return 'kl'
+
+
+class Test_SVRMU_ACC_L2(Test_NMF, MinibatchMixin):
+    @property
+    def method(self):
+        return 'svrmu-acc'
+
+    @property
+    def likelihood(self):
+        return 'l2'
 
 
 class Test_ASG_MU_L2(Test_NMF, MinibatchMixin):
@@ -186,7 +212,6 @@ class Test_GSAG_MU_KL(Test_GSAG_MU_L2):
     @property
     def likelihood(self):
         return 'kl'
-
 
 
 if __name__ == '__main__':

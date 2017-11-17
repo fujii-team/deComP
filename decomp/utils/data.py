@@ -36,6 +36,9 @@ class MinibatchEpochIndex(object):
     def shuffle(self):
         self.rng.shuffle(self._indexes)
 
+    def __len__(self):
+        return int(len(self._indexes) / self._minibatch)
+
     def __iter__(self):
         return self
 
