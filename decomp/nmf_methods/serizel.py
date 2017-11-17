@@ -12,7 +12,7 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
     """
     Implementations of
     Serizel, R., Essid, S., & Richard, G. (2016).
-    MINI-BATCH STOCHASTIC APPROACHES FOR ACCELERATED MULTIPLICATIVE UPDATES IN NONNEGATIVE MATRIX FACTORISATION WITH BETA-DIVERGENCE, 13–16.
+    MINI-BATCH STOCHASTIC APPROACHES FOR ACCELERATED MULTIPLICATIVE UPDATES IN NONNEGATIVE MATRIX FACTORISATION WITH BETA-DIVERGENCE, 13-16.
     """
     gradients_x, gradients_d = get_gradients(likelihood, mask)
     grad_x = gradients_x[likelihood] if grad_x is None else grad_x
