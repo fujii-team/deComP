@@ -12,7 +12,7 @@ class NMFData(object):
     https://arxiv.org/pdf/1710.10781.pdf
     """
     def __init__(self):
-        F, N, K, b = 300, 1000, 10, 100
+        F, N, K, b = 500, 2000, 10, 200
 
         self.rng = xp.random.RandomState(0)
 
@@ -21,7 +21,7 @@ class NMFData(object):
         self.y = xp.dot(self.xtrue, self.Dtrue)
         self.D = self.Dtrue + 0.3 * xp.maximum(
                 self.randn(*self.Dtrue.shape), 0.)
-        self.maxiter = 500
+        self.maxiter = 100
         v = self.rng.uniform(0.45, 1.0, size=self.y.size).reshape(self.y.shape)
         self.mask = xp.rint(v).astype(np.float32)
 
@@ -35,7 +35,7 @@ class NMFData(object):
     def test_minibatch(self, method):
         it, D, x = nmf.solve(self.y, self.D, tol=1.0e-10,
                              method=method, maxiter=self.maxiter,
-                             minibatch=30)
+                             minibatch=200)
 
     def test_mask(self, method):
         it, D, x = nmf.solve(self.y, self.D, tol=1.0e-10,
@@ -45,7 +45,7 @@ class NMFData(object):
     def test_minibatch_mask(self, method):
         it, D, x = nmf.solve(self.y, self.D, tol=1.0e-10,
                              method=method, maxiter=self.maxiter,
-                             mask=self.mask, minibatch=30)
+                             mask=self.mask, minibatch=200)
 
 
 @pytest.mark.parametrize("method", nmf.BATCH_METHODS)
