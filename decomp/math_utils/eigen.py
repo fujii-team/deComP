@@ -12,16 +12,9 @@ def spectral_radius_Gershgorin(X, xp, keepdims=False):
     Gershgorin circle theorem.
     https://en.wikipedia.org/wiki/Gershgorin_circle_theorem
 
-    Here, we assume X is a symmetric matrix or a stack of matrices.
-    X.shape: [..., n, n]
+    Here, we assume X is symmetric.
 
-    Return:
-    -------
-    [..., 1, 1] if keepdims is True
-    [...,] if keepdims is False
+    X should be a matrix or batch of matrices, shape [..., n, n].
+    The return shape is [..., 1]
     """
-    #if keepdims:
-    #    return xp.max(xp.sum(xp.abs(X), axis=-2, keepdims=True),
-    #                  axis=-2, keepdims=keepdims)
-    return xp.max(xp.sum(xp.abs(X), axis=-2, keepdims=keepdims),
-                  axis=-1, keepdims=keepdims)
+    return xp.max(xp.sum(xp.abs(X), axis=-2), axis=-1, keepdims=True)

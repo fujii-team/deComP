@@ -1,5 +1,6 @@
 import numpy as np
-from .exceptions import ShapeMismatchError, DtypeMismatchError
+from .exceptions import ShapeMismatchError, DtypeMismatchError, DimInvalidError
+
 
 def assert_shapes(x_name, x, y_name, y, axes=None):
     """
@@ -49,6 +50,7 @@ def assert_ndim(x_name, x, ndim):
                               '{2:d}'.format(x_name, ndim, x.ndim))
     return
 
+
 def assert_dtypes(dtypes='fc', **arrays):
     """
     Make sure the dtypes of two arrays are valid.
@@ -80,3 +82,19 @@ def assert_dtypes(dtypes='fc', **arrays):
             raise DtypeMismatchError(
                 'Data type should be one of ' + str(dtypes) +
                 ', but given {0:s} for {1:s}'.format(str(x.dtype), k))
+
+
+def assert_positive(x):
+    """ Make sure all the element is positive """
+    if x is None:
+        return
+    assert x.dtype.kind != 'c'
+    assert (x > 0.0).all()
+
+
+def assert_nonnegative(x):
+    """ Make sure all the element is nonnegative """
+    if x is None:
+        return
+    assert x.dtype.kind != 'c'
+    assert (x >= 0.0).all()

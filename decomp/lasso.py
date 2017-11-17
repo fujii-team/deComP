@@ -10,7 +10,7 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 """
 
 
-AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista', 'parallel_cd']
+AVAILABLE_METHODS = ['ista', 'acc_ista', 'fista', 'parallel_cd', 'cd']
 _JITTER = 1.0e-15
 
 
@@ -61,12 +61,16 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
 
     assertion.assert_dtypes(y=y, A=A, x=x)
     assertion.assert_dtypes(mask=mask, dtypes='f')
+    assertion.assert_nonnegative(mask)
+    assertion.assert_ndim('A', A, ndim=2)
     assertion.assert_shapes('x', x, 'A', A, axes=1)
     assertion.assert_shapes('y', y, 'x', x,
                             axes=np.arange(x.ndim - 1).tolist())
     assertion.assert_shapes('y', y, 'A', A, axes=[-1])
-    assertion.assert_shapes('y', y, 'mask', mask)
-
+    if mask is not None and mask.ndim == 1:
+        assertion.assert_shapes('y', y, 'mask', mask, axes=[-1])
+    else:
+        assertion.assert_shapes('y', y, 'mask', mask)
     if method not in AVAILABLE_METHODS:
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(AVAILABLE_METHODS), method))
@@ -93,6 +97,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
     A scaling
         We also scale A, so that [AAt]_i,i is 1.
     """
+    if mask is not None and mask.ndim == 1:
+        y = y * mask
+        A = A * mask
     # A scaling
     if A.dtype.kind != 'c':
         AAt_diag_sqrt = xp.sqrt(xp.sum(xp.square(A), axis=-1))
@@ -102,9 +109,12 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
     alpha = alpha / AAt_diag_sqrt
     tol = tol * AAt_diag_sqrt
 
-    if mask is None:
+    if mask is None or mask.ndim == 1:
         # alpha scaling
-        alpha = alpha * A.shape[-1]
+        if mask is not None:  # mask.ndim == 1
+            alpha = alpha * xp.sum(mask, axis=-1)
+        else:
+            alpha = alpha * A.shape[-1]
         if method == 'ista':
             it, x = _solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                 xp=xp)
@@ -226,6 +236,12 @@ def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
+def mean_except_last(x, xp):
+    for _ in range(x.ndim - 1):
+        x = xp.mean(x, 0)
+    return x
+
+
 def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     """ Fast path to solve lasso by ista method with missing value """
     if A.dtype.kind != 'c':
@@ -234,7 +250,7 @@ def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     else:
         At = xp.conj(A.T)
         updater = _update_complex_mask
-    AAt = xp.dot(A, At)
+    AAt = xp.dot(A * mean_except_last(mask, xp), At)
     Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
     L_inv = Lalpha_inv * alpha
 
@@ -282,7 +298,7 @@ def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     else:
         At = xp.conj(A.T)
         updater = _update_complex_mask
-    AAt = xp.dot(A, At)
+    AAt = xp.dot(A * mean_except_last(mask, xp), At)
     Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
     L_inv = Lalpha_inv * alpha
 
@@ -334,7 +350,7 @@ def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     else:
         At = xp.conj(A.T)
         updater = _update_complex_mask
-    AAt = xp.dot(A, At)
+    AAt = xp.dot(A * mean_except_last(mask, xp), At)
     Lalpha_inv = 1.0 / eigen.spectral_radius_Gershgorin(AAt, xp)
     L_inv = Lalpha_inv * alpha
 
@@ -465,6 +481,7 @@ def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     for i in range(maxiter):
         flags = []
         for k in range(x.shape[-1]):
+            # TODO In theory, the below is not accurate, but actually works...
             xA = xp.tensordot(x, A, axes=1) * mask\
                 - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
             x_new = xp.tensordot(y - xA, At[:, k], axes=1)
@@ -476,3 +493,17 @@ def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
         if i % 10 == 0 and all(flags):
             return i, x
     return maxiter - 1, x
+
+    """  This should be true...
+    AAt = xp.tensordot(A * xp.expand_dims(mask, -2), At, axes=1)  # [..., m, m]
+    AAt_diag = xp.diagonal(AAt, axis1=-2, axis2=-1)  # [..., m]
+
+    for i in range(maxiter):
+        flags = []
+        for k in range(x.shape[-1]):
+            xA = xp.tensordot(x, A, axes=1)\
+                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
+            x_new = xp.tensordot(y - xA * mask, At[:, k],
+                                 axes=1) / AAt_diag[..., k]
+            x_new = soft_threshold(x_new, alpha[..., k], xp)
+    """
