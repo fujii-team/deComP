@@ -1,9 +1,7 @@
 import numpy as np
 from ..utils.data import MinibatchEpochIndex
 from ..utils import assertion, normalize
-from .serizel import (_grad_x_l2, _grad_x_kl, _grad_d_l2, _grad_d_kl,
-                      _grad_x_l2_mask, _grad_x_kl_mask,
-                      _grad_d_l2_mask, _grad_d_kl_mask)
+from .grads import get_gradients
 
 
 _JITTER = 1.0e-15
@@ -19,21 +17,7 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
     https://arxiv.org/pdf/1710.10781.pdf
     """
     # mini-batch methods
-    if mask is None:
-        gradients_x = {'l2': _grad_x_l2,
-                       'kl': _grad_x_kl,
-                       'poisson': _grad_x_kl}
-        gradients_d = {'l2': _grad_d_l2,
-                       'kl': _grad_d_kl,
-                       'poisson': _grad_d_kl}
-    else:
-        gradients_x = {'l2': _grad_x_l2_mask,
-                       'kl': _grad_x_kl_mask,
-                       'poisson': _grad_x_kl_mask}
-        gradients_d = {'l2': _grad_d_l2_mask,
-                       'kl': _grad_d_kl_mask,
-                       'poisson': _grad_d_kl_mask}
-
+    gradients_x, gradients_d = get_gradients(likelihood, mask)
     grad_x = gradients_x[likelihood] if grad_x is None else grad_x
     grad_d = gradients_d[likelihood] if grad_d is None else grad_d
 
