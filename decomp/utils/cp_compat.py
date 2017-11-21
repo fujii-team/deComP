@@ -1,8 +1,7 @@
-import sys
-
 try:
     import cupy
     numpy_or_cupy = cupy
+    has_cupy = True
 
     def get_array_module(*arrays):
         xp = cupy.get_array_module(arrays[0])
@@ -15,6 +14,7 @@ try:
 except ImportError:
     import numpy
     numpy_or_cupy = numpy
+    has_cupy = False
 
     def get_array_module(*arrays):
         return numpy
