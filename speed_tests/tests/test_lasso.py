@@ -45,52 +45,15 @@ class LassoData(object):
         return it_list
 
 
-def test_ista(benchmark):
+@pytest.mark.parametrize("method", lasso.AVAILABLE_METHODS)
+def test(benchmark, method):
     lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test, 'ista')
+    it_list = benchmark(lasso_data.test, method)
     assert all(it < lasso_data.maxiter - 1 for it in it_list)
 
-def test_ista_mask(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test_mask, 'ista')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
 
-def test_acc_ista(benchmark):
+@pytest.mark.parametrize("method", lasso.AVAILABLE_METHODS)
+def test_mask(benchmark, method):
     lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test, 'acc_ista')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_acc_ista_mask(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test_mask, 'acc_ista')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_fista(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test, 'fista')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_fista_mask(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test_mask, 'fista')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_cd(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test, 'cd')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_cd_mask(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test_mask, 'cd')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_parallel_cd(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test, 'parallel_cd')
-    assert all(it < lasso_data.maxiter - 1 for it in it_list)
-
-def test_parallel_cd_mask(benchmark):
-    lasso_data = LassoData()
-    it_list = benchmark(lasso_data.test_mask, 'parallel_cd')
+    it_list = benchmark(lasso_data.test, method)
     assert all(it < lasso_data.maxiter - 1 for it in it_list)

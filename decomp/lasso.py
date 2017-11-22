@@ -1,5 +1,5 @@
 import numpy as np
-from .utils.cp_compat import get_array_module
+from .utils.cp_compat import get_array_module, linalg_inv
 from .utils import assertion, dtype
 from .math_utils import eigen
 
@@ -10,7 +10,7 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 """
 
 
-AVAILABLE_METHODS = ['ista', 'acc_ista', 'fista', 'parallel_cd', 'cd']
+AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista', 'parallel_cd', 'admm']
 _JITTER = 1.0e-15
 
 
@@ -40,7 +40,8 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
     tol: a float
         Criterion to stop iteration
     method: string
-        'ista' | 'fista' | 'cd'
+        'ista' | 'fista' | 'cd' | 'parallel_cd' | 'acc_ista' | 'admm' |
+        'admm_lsqr'
 
         For ista and fista, see
             Beck, A., & Teboulle, M. (n.d.).
@@ -52,6 +53,17 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
         cd: coordinate descent.
             This method is very slow because it is difficult to parallelize
             this algorithm. It is just for the reference purpose.
+
+        acc_ista: accelarated ista
+            # TODO reference needed
+
+        parallel_cd: parallelized coordinate descent.
+            # TODO reference needed
+
+        admm, admm_lsqr: alternative direction method of multipliers
+            S. Boyd, N. Parikh, E. Chu, B. Peleato, and J. Eckstein
+            http://stanford.edu/~boyd/papers/admm_distr_stats.html
+
     """
     # Check all the class are numpy or cupy
     xp = get_array_module(y, A, x, mask)
@@ -129,6 +141,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         elif method == 'parallel_cd':
             it, x = _solve_parallel_cd(y, A, alpha, x, tol=tol,
                                        maxiter=maxiter, xp=xp)
+        elif method == 'admm':
+            it, x = _solve_admm(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                xp=xp, rho=1.0, **kwargs)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented.')
@@ -150,6 +165,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         elif method == 'parallel_cd':
             it, x = _solve_parallel_cd_mask(y, A, alpha, x, tol=tol,
                                             maxiter=maxiter, mask=mask, xp=xp)
+        elif method == 'admm':
+            it, x = _solve_admm_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                     mask=mask, xp=xp, rho=1.0, **kwargs)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
@@ -494,16 +512,69 @@ def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
             return i, x
     return maxiter - 1, x
 
-    """  This should be true...
-    AAt = xp.tensordot(A * xp.expand_dims(mask, -2), At, axes=1)  # [..., m, m]
-    AAt_diag = xp.diagonal(AAt, axis1=-2, axis2=-1)  # [..., m]
 
-    for i in range(maxiter):
-        flags = []
-        for k in range(x.shape[-1]):
-            xA = xp.tensordot(x, A, axes=1)\
-                - xp.tensordot(x[..., k:k+1], A[k:k+1], axes=1)
-            x_new = xp.tensordot(y - xA * mask, At[:, k],
-                                 axes=1) / AAt_diag[..., k]
-            x_new = soft_threshold(x_new, alpha[..., k], xp)
+def _solve_admm(y, A, alpha, x, tol, maxiter, xp, rho=1.0):
+    """ Fast path to solve lasso by admm.
+    This is a python translation of
+    http://stanford.edu/~boyd/papers/admm/lasso/lasso.html
     """
+    if A.dtype.kind != 'c':
+        At = A.T
+        soft_threshold = soft_threshold_float
+    else:
+        At = xp.conj(A.T)
+        soft_threshold = soft_threshold_complex
+
+    yAt = xp.tensordot(y, At, axes=1)
+    AAt = xp.dot(A, At)
+    AAt_inv = linalg_inv(AAt + rho * xp.eye(AAt.shape[-1]))
+    alpha_over_rho = alpha / rho
+    u = x.copy()
+    z = x.copy()
+    for i in range(maxiter):
+        # x-update
+        x_new = xp.dot(yAt + rho * (z - u), AAt_inv)
+        z = soft_threshold(x_new + u, alpha_over_rho, xp)
+
+        if i % 10 == 0 and (xp.max(xp.abs(x - x_new) - tol) < 0.0 and
+                            xp.max(xp.abs(z - x_new) - tol) < 0.0):
+            return i, x_new
+        x = x_new
+        u = u + x - z
+    return maxiter - 1, x
+
+
+def _solve_admm_mask(y, A, alpha, x, tol, maxiter, mask, xp, rho=1.0):
+    """ Fast path to solve lasso by admm.
+    This is a modification of
+    http://stanford.edu/~boyd/papers/admm/lasso/lasso.html
+    to enable masking.
+    """
+    if A.dtype.kind != 'c':
+        At = A.T
+        soft_threshold = soft_threshold_float
+    else:
+        At = xp.conj(A.T)
+        soft_threshold = soft_threshold_complex
+
+    yAt = xp.expand_dims(xp.tensordot(y * mask, At, axes=1), -2)
+    x = xp.expand_dims(x, -2)
+    alpha = xp.expand_dims(alpha, -2)
+    tol = xp.expand_dims(tol, -2)
+
+    AAt = xp.tensordot(xp.expand_dims(mask, -2) * A, At, axes=1)
+    AAt_inv = linalg_inv(AAt + rho * xp.eye(AAt.shape[-1]))
+    alpha_over_rho = alpha / rho
+    u = x.copy()
+    z = x.copy()
+    for i in range(maxiter):
+        # x-update
+        x_new = xp.matmul(yAt + rho * (z - u), AAt_inv)
+        z = soft_threshold(x_new + u, alpha_over_rho, xp)
+
+        if i % 10 == 0 and (xp.max(xp.abs(x - x_new) - tol) < 0.0 and
+                            xp.max(xp.abs(z - x_new) - tol) < 0.0):
+            return i, xp.squeeze(x_new, -2)
+        x = x_new
+        u = u + x - z
+    return maxiter - 1, xp.squeeze(x, -2)
