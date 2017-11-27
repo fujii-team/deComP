@@ -1,3 +1,6 @@
+from chainer import cuda
+
+
 try:
     import cupy
     numpy_or_cupy = cupy
@@ -12,7 +15,8 @@ try:
         return xp
 
     def linalg_inv(x):
-        """ Batch version of np.linalg.inv """
+        """ Batch version of np.linalg.inv
+        """
         if x.ndim == 2:
             return cupy.linalg.inv(x)
         elif x.ndim == 3:
@@ -37,6 +41,13 @@ try:
             raise ValueError('linalg_inv only support x.ndim == 5. Given',
                              x.ndim)
 
+    def to_gpu(array, device=None):
+        device = device if device is not None else cuda.get_device_from_id(0)
+        return cuda.to_gpu(array, device=device)
+
+    def to_cpu(array):
+        return cuda.to_cpu(array)
+
 
 except ImportError:
     import numpy
@@ -47,3 +58,9 @@ except ImportError:
         return numpy
 
     linalg_inv = numpy.linalg.inv
+
+    def to_gpu(array, device=None):
+        return numpy.array(array)
+
+    def to_cpu(array):
+        return numpy.array(array)

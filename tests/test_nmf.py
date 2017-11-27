@@ -29,26 +29,27 @@ class TestNMF(unittest.TestCase):
     def error(self, x, D, mask):
         x = get(x)
         D = get(D)
+        y = get(self.y)
         mask = get(mask)
 
         mask = np.ones(self.y.shape, self.y.dtype) if mask is None else mask
         D = normalize.l2_strict(D, axis=-1, xp=np)
         if self.likelihood == 'l2':
-            loss = np.sum(np.square(self.y - np.dot(x, D)) * mask)
+            loss = np.sum(np.square(y - np.dot(x, D)) * mask)
             return 0.5 * loss
         elif self.likelihood == 'kl':  # KL
             f = np.maximum(np.dot(x, D), 1.0e-15)
-            return np.sum((- self.y * np.log(f) + f) * mask)
+            return np.sum((- y * np.log(f) + f) * mask)
         raise NotImplementedError('Likelihood {} is not implemented'.format(
                                                             self.likelihood))
 
     def assert_minimum(self, x, D, tol, n=100, mask=None):
         loss = self.error(x, D, mask)
         for _ in range(n):
-            dx = self.randn(*x.shape) * tol
-            dD = self.randn(*D.shape) * tol
-            assert loss < self.error(np.maximum(x + dx, 0.0),
-                                     np.maximum(D + dD, 0.0), mask) + 1.0e-15
+            x_new = get(x + self.randn(*x.shape) * tol)
+            D_new = get(D + self.randn(*D.shape) * tol)
+            assert loss < self.error(np.maximum(x_new, 0.0),
+                                     np.maximum(D_new, 0.0), mask) + 1.0e-15
 
     @property
     def maxiter(self):

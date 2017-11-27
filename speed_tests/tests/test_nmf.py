@@ -78,7 +78,7 @@ def test_nmf_minibatch_mask(benchmark, method):
     it_list = benchmark(nmf_data.test_minibatch_mask, method, all_xp=True)
 
 
-'''@pytest.mark.parametrize("method", nmf.MINIBATCH_METHODS)
+@pytest.mark.parametrize("method", nmf.MINIBATCH_METHODS)
 def test_nmf_minibatch_lazy(benchmark, method):
     nmf_data = NMFData(5000, 20000, 10, 1000)
     it_list = benchmark(nmf_data.test_minibatch, method, all_xp=False)
@@ -88,4 +88,3 @@ def test_nmf_minibatch_lazy(benchmark, method):
 def test_nmf_minibatch_mask_lazy(benchmark, method):
     nmf_data = NMFData(5000, 20000, 10, 1000)
     it_list = benchmark(nmf_data.test_minibatch_mask, method, all_xp=False)
-'''

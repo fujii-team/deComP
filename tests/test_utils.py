@@ -1,9 +1,10 @@
+import pytest
 import unittest
 import numpy as np
 import time
 from decomp.utils.cp_compat import numpy_or_cupy as xp
-from decomp.utils.data import (MinibatchBase, MinibatchData,
-                               SequentialMinibatchData, ParallelMinibatchData)
+from decomp.utils.cp_compat import has_cupy
+from decomp.utils.data import MinibatchBase, MinibatchData, AsyncMinibatchData
 
 from .testings import allclose
 
@@ -16,38 +17,40 @@ class Test_MinibatchBase(unittest.TestCase):
         self.data2 = MinibatchBase(self.array.copy(), self.minibatch)
 
     def test_read(self):
+        assert allclose(self.data.array, self.array)
         for i, (arr, arr2) in enumerate(zip(self.data, self.data2)):
             # wait to mimic heavy calculation
             time.sleep(0.01)
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr)
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr2)
+            print(i)
+            assert allclose(self.array[i * self.minibatch:
+                            (i + 1) * self.minibatch], arr), i
+            assert allclose(self.array[i * self.minibatch:
+                            (i + 1) * self.minibatch], arr2), i
         assert allclose(self.data.array, self.array)
 
         # make sure the loop can be repeated.
         for i, arr in enumerate(self.data):
             # wait to mimic heavy calculation
             time.sleep(0.01)
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr)
+            assert allclose(self.array[i * self.minibatch:
+                            (i + 1) * self.minibatch], arr), i
         assert allclose(self.data.array, self.array)
 
     def one_loop(self):
         count = 0
         for i, arr in enumerate(self.data):
             count += 1
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr)
+            assert allclose(self.array[i * self.minibatch:
+                                       (i + 1) * self.minibatch], arr), i
         assert count == self.data.n_loop
 
     def two_loop(self):
         count = 0
         for i, (arr, arr2) in enumerate(zip(self.data, self.data2)):
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr)
-            assert allclose(
-                self.array[i * self.minibatch: (i + 1) * self.minibatch], arr2)
+            assert allclose(self.array[i * self.minibatch:
+                                       (i + 1) * self.minibatch], arr), i
+            assert allclose(self.array[i * self.minibatch:
+                                       (i + 1) * self.minibatch], arr2), i
             count += 1
         assert count == self.data.n_loop
 
@@ -69,6 +72,14 @@ class Test_MinibatchBase(unittest.TestCase):
             assert allclose(arr, xp.ones_like(arr) * i)
 
 
+class Test_MinibatchBase2(unittest.TestCase):
+    def setUp(self):
+        self.array = xp.random.randn(100, 20)
+        self.minibatch = 10
+        self.data = MinibatchBase(self.array.copy(), self.minibatch)
+        self.data2 = MinibatchBase(self.array.copy(), self.minibatch)
+
+
 class Test_MinibatchData(Test_MinibatchBase):
     def setUp(self):
         self.array = xp.random.randn(100, 20)
@@ -79,11 +90,10 @@ class Test_MinibatchData(Test_MinibatchBase):
 
 class Test_MinibatchData_with_shuffle(unittest.TestCase):
     def setUp(self):
-        self.rng = xp.random.RandomState(0)
         self.array = xp.random.randn(100, 20)
         self.minibatch = 11
         self.shuffle_index = xp.arange(100)
-        self.rng.shuffle(self.shuffle_index)
+        xp.random.shuffle(self.shuffle_index)
         self.data = MinibatchData(self.array.copy(), self.minibatch,
                                   self.shuffle_index)
         self.data2 = MinibatchData(self.array.copy(), self.minibatch,
@@ -138,81 +148,64 @@ class Test_MinibatchData_with_shuffle(unittest.TestCase):
         assert allclose(self.data.array, self.array)
 
         shuffle_index = xp.arange(len(self.shuffle_index))
-        self.rng.shuffle(shuffle_index)
+        xp.random.shuffle(shuffle_index)
         self.data.shuffle(shuffle_index)
         assert not allclose(self.data._array, self.array)
         assert allclose(self.data.array, self.array)
 
 
-class Test_SequentialMinibatchData(Test_MinibatchBase):
+@pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')
+class Test_AsyncMinibatchData(Test_MinibatchBase):
     def setUp(self):
-        self.array = np.random.randn(1000, 20)
-        self.minibatch = 12
-        self.data = SequentialMinibatchData(self.array.copy(), self.minibatch,
-                                            semibatch=8)
-        self.data2 = SequentialMinibatchData(self.array.copy(), self.minibatch,
-                                             semibatch=8)
+        self.array = np.arange(20000).reshape(1000, 20)
+        self.minibatch = 100
+        self.data = AsyncMinibatchData(self.array.copy(), self.minibatch)
+        self.data2 = AsyncMinibatchData(self.array.copy(), self.minibatch)
 
 
-class Test_SequentialMinibatchData_w_shuffle(Test_MinibatchData_with_shuffle):
+@pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')
+class Test_AsyncMinibatchData_wo_stream(Test_MinibatchBase):
     def setUp(self):
-        self.rng = np.random.RandomState(0)
-        self.array = np.random.randn(1000, 20)
-        self.minibatch = 12
-        self.shuffle_index = np.arange(1000)
-        self.rng.shuffle(self.shuffle_index)
-        self.data = SequentialMinibatchData(self.array.copy(), self.minibatch,
-                                            semibatch=8,
-                                            shuffle_index=self.shuffle_index)
-        self.data2 = SequentialMinibatchData(self.array.copy(), self.minibatch,
-                                             semibatch=8,
-                                             shuffle_index=self.shuffle_index)
-
-    def test_shuffle(self):
-        assert not allclose(self.data._array, self.array)
-        assert allclose(self.data.array, self.array)
-
-        shuffle_index = np.arange(len(self.shuffle_index))
-        self.rng.shuffle(shuffle_index)
-        self.data.shuffle(shuffle_index)
-        assert not allclose(self.data._array, self.array)
-        assert allclose(self.data.array, self.array)
+        self.array = np.arange(20000).reshape(1000, 20)
+        self.minibatch = 100
+        self.data = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                       use_stream=False)
+        self.data2 = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                        use_stream=False)
 
 
-class Test_ParallelMinibatchData(Test_MinibatchBase):
-    def setUp(self):
-        self.array = np.random.randn(1000, 20)
-        self.minibatch = 12
-        self.data = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                          semibatch=8)
-        self.data2 = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                           semibatch=8)
-
-
-class Test_ParallelMinibatchData_2para(Test_MinibatchBase):
-    def setUp(self):
-        self.array = np.random.randn(1000, 20)
-        self.minibatch = 12
-        self.data = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                          semibatch=8, n_parallel=2)
-        self.data2 = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                           semibatch=8, n_parallel=2)
-
-
-class Test_ParallelMinibatchData_w_shuffle(
-                                    Test_SequentialMinibatchData_w_shuffle):
+@pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')
+class Test_AsyncMinibatchData_w_shuffle(Test_MinibatchData_with_shuffle):
     def setUp(self):
         self.rng = np.random.RandomState(0)
-        self.array = np.random.randn(1000, 20)
-        self.minibatch = 12
+        self.array = np.arange(20000).reshape(1000, 20)
+        self.minibatch = 100
         self.shuffle_index = np.arange(1000)
         self.rng.shuffle(self.shuffle_index)
-        self.data = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                          semibatch=8,
-                                          shuffle_index=self.shuffle_index)
-        self.data2 = ParallelMinibatchData(self.array.copy(), self.minibatch,
-                                           semibatch=8,
-                                           shuffle_index=self.shuffle_index)
+        self.data = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                       shuffle_index=self.shuffle_index)
+        self.data2 = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                        shuffle_index=self.shuffle_index)
+
+
+@pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')
+class Test_AsyncMinibatchData_small(Test_MinibatchBase):
+    def setUp(self):
+        self.array = np.random.randn(20, 20)
+        self.minibatch = 12
+        self.data = AsyncMinibatchData(self.array.copy(), self.minibatch)
+        self.data2 = AsyncMinibatchData(self.array.copy(), self.minibatch)
+
+
+@pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')
+class Test_AsyncMinibatchData_2para(Test_MinibatchBase):
+    def setUp(self):
+        self.array = np.random.randn(1000, 20)
+        self.minibatch = 100
+        self.data = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                       n_parallel=2)
+        self.data2 = AsyncMinibatchData(self.array.copy(), self.minibatch,
+                                        n_parallel=2)
 
 
 if __name__ == '__main__':

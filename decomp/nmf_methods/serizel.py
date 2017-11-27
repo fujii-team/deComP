@@ -1,4 +1,3 @@
-from ..utils.data import SequentialMinibatchData
 from ..utils.cp_compat import get_array_module
 from ..utils import assertion, normalize
 from .grads import get_gradients
@@ -37,20 +36,15 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
                               'implemented.'.format(method))
 
 
-def shuffle(y, x, mask, rng):
-    xp = get_array_module(y.array)
-    index = xp.arange(len(y.array))
-    rng.shuffle(index)
-    y.shuffle(index)
-    x.shuffle(index)
-    mask.shuffle(index)
-
-
 def solve_asg_mu(y, D, x, tol, minibatch, maxiter,
                  mask, rng, xp, grad_x, grad_d):
     """ Algorithm 5 in the paper """
+    index = xp.arange(len(y.array))
     for it in range(1, maxiter):
-        shuffle(y, x, mask, rng)
+        rng.shuffle(index)
+        y.shuffle(index)
+        x.shuffle(index)
+        mask.shuffle(index)
 
         for y_minibatch, x_minibatch, mask_minibatch in zip(y, x, mask):
             grad_x_pos, grad_x_neg = grad_x(
@@ -74,8 +68,12 @@ def solve_asg_mu(y, D, x, tol, minibatch, maxiter,
 def solve_gsg_mu(y, D, x, tol, minibatch, maxiter,
                  mask, rng, xp, grad_x, grad_d):
     """ Algorithm 6 in the paper """
+    index = xp.arange(len(y.array))
     for it in range(1, maxiter):
-        shuffle(y, x, mask, rng)
+        rng.shuffle(index)
+        y.shuffle(index)
+        x.shuffle(index)
+        mask.shuffle(index)
 
         for y_minibatch, x_minibatch, mask_minibatch in zip(y, x, mask):
             grad_x_pos, grad_x_neg = grad_x(
@@ -102,8 +100,12 @@ def solve_asag_mu(y, D, x, tol, minibatch, maxiter,
     def accumurate_grad(grad_sum, grad):
         return (1.0 - forget_rate) * grad_sum + forget_rate * grad
 
+    index = xp.arange(len(y.array))
     for it in range(1, maxiter):
-        shuffle(y, x, mask, rng)
+        rng.shuffle(index)
+        y.shuffle(index)
+        x.shuffle(index)
+        mask.shuffle(index)
 
         grad_D_pos_sum = xp.zeros_like(D)
         grad_D_neg_sum = xp.zeros_like(D)
@@ -136,8 +138,12 @@ def solve_gsag_mu(y, D, x, tol, minibatch, maxiter,
     def accumurate_grad(grad_sum, grad):
         return (1.0 - forget_rate) * grad_sum + forget_rate * grad
 
+    index = xp.arange(len(y.array))
     for it in range(1, maxiter):
-        shuffle(y, x, mask, rng)
+        rng.shuffle(index)
+        y.shuffle(index)
+        x.shuffle(index)
+        mask.shuffle(index)
 
         grad_D_pos_sum = xp.zeros_like(D)
         grad_D_neg_sum = xp.zeros_like(D)

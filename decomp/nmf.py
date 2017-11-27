@@ -1,12 +1,11 @@
 import numpy as np
 from .utils.cp_compat import get_array_module
-from .utils.data import (minibatch_index, MinibatchData, NoneIterator,
-                         SequentialMinibatchData, ParallelMinibatchData)
+from .utils.data import MinibatchData, NoneIterator, AsyncMinibatchData
 from .utils import assertion, normalize
 from .nmf_methods import batch_mu, serizel, kasai
 
 
-BATCH_METHODS = ['mu']  # , 'spgd']
+BATCH_METHODS = ['mu']
 MINIBATCH_METHODS = [
     'asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu',  # Romain Serizel et al
     'svrmu', 'svrmu-acc',  # H. Kasai et al
@@ -40,16 +39,17 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
     maxiter: an integer
         Number of iteration
     method: string
-        One of AVAILABLE_METHODS
+        One of ['mu', 'asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu',
+                'svrmu', 'svrmu-acc']
     likelihood: string
-        One of ['l2', 'kl', 'poisson']
+        One of ['l2', 'kl']
 
     mask: an array-like of Boolean (or integer, float)
         The missing point should be zero. One for otherwise.
 
     """
+
     xp = get_array_module(D)
-    get_array_module(y, x)  # make sure y and x is the same type
     if x is None:
         x = xp.ones((y.shape[0], D.shape[0]), dtype=y.dtype)
 
@@ -64,7 +64,7 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
     assertion.assert_nonnegative(D)
     assertion.assert_nonnegative(x)
 
-    if likelihood not in ['l2']:
+    if likelihood in ['kl']:
         assertion.assert_nonnegative(y)
 
     D = normalize.l2_strict(D, axis=-1, xp=xp)
@@ -79,11 +79,9 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
         raise NotImplementedError('Batch-NMF with {} algorithm is not yet '
                                   'implemented.'.format(method))
 
-    # minibatch methods
-    # prepare MinibatchData
-    if xp is np or get_array_module(y) is not np: # both np or xp
-        # just check the array type
-        xp = get_array_module(y, D, x, mask)
+    if xp is np:
+        # check all the array type is np
+        get_array_module(y, D, x, mask)
         y = MinibatchData(y, minibatch)
         x = MinibatchData(x, minibatch)
         if mask is None:
@@ -91,13 +89,18 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
         else:
             mask = MinibatchData(mask, minibatch)
         rng = xp.random.RandomState(random_seed)
-    else:  # np.store and cupy calculation
-        y = SequentialMinibatchData(y, minibatch, needs_update=False)
-        x = SequentialMinibatchData(x, minibatch)
-        if mask is None:
-            mask = NoneIterator()
-        else:
-            mask = SequentialMinibatchData(mask, minibatch, needs_update=False)
+    else:
+        # minibatch methods
+        def get_dataset(a, needs_update=True):
+            if a is None:
+                return NoneIterator()
+            if get_array_module(a) is not np:
+                return MinibatchData(a, minibatch)
+            return AsyncMinibatchData(a, minibatch,
+                                      needs_update=needs_update)
+        x = get_dataset(x, needs_update=True)
+        y = get_dataset(y, needs_update=False)
+        mask = get_dataset(mask, needs_update=False)
         rng = np.random.RandomState(random_seed)
 
     if method in ['asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu']:

@@ -1,6 +1,7 @@
 import numpy as np
-import threading
-from .cp_compat import numpy_or_cupy, get_array_module
+from .cp_compat import numpy_or_cupy, get_array_module, has_cupy
+if has_cupy:
+    import cupy as cp
 from . import assertion
 
 """
@@ -71,10 +72,14 @@ class MinibatchBase(object):
         minibatch: int
             minibatch size
         """
-        self.i = 0
+        self.round = 0  # This runs 0 -> self.n_loop-1
         self.minibatch = minibatch
         self._array = array
         self.size = len(array)
+        if self.size < self.minibatch:
+            raise ValueError('Minibatch size should be smaller than the total '
+                             'size. Given {} < {}'.format(self.size,
+                                                          self.minibatch))
 
     @property
     def shape(self):
@@ -98,7 +103,7 @@ class MinibatchBase(object):
         return int(self.size / self.minibatch)
 
     def reset(self):
-        self.i = 0
+        self.round = 0
 
     def __iter__(self):
         self.reset()
@@ -108,10 +113,11 @@ class MinibatchBase(object):
         return self.next()
 
     def next(self):
-        if self.i + self.minibatch > self.size:
+        if self.round + 1 > self.n_loop:
             raise StopIteration()
-        value = self._array[self.i: self.i + self.minibatch]
-        self.i += self.minibatch
+        value = self._array[self.round * self.minibatch:
+                            (self.round + 1) * self.minibatch]
+        self.round += 1
         return value
 
 
@@ -130,99 +136,63 @@ class MinibatchData(MinibatchBase):
         xp = get_array_module(array)
         assertion.assert_shapes('array', array, 'shuffle_index', shuffle_index,
                                 axes=[0])
+        if shuffle_index is not None:
+            array = array[shuffle_index]
+            self.restore_index = xp.arange(len(array))[shuffle_index]
+        else:
+            array = array
+            self.restore_index = xp.arange(len(array))
+        super(MinibatchData, self).__init__(array, minibatch)
+
+    @property
+    def array(self):
+        index = self.restore_index.argsort()
+        return self._array[index]
+
+    def shuffle(self, shuffle_index):
+        assertion.assert_shapes('array', self._array,
+                                'shuffle_index', shuffle_index, axes=[0])
+        self._array = self._array[shuffle_index]
+        self.restore_index = self.restore_index[shuffle_index]
+
+
+class _StreamedMinibatch(object):
+    """ A minibatch enabling asynchronous memory transfer """
+    def __init__(self, array, use_stream):
+        self.array = array
+        if use_stream:
+            self.stream = cp.cuda.Stream(non_blocking=True)
+        else:
+            self.stream = None
+
+    def send_to_gpu(self, array):
+        """ array should be generated from cp.cuda.alloc_pinned_memory """
+        self.array.set(array, stream=self.stream)
+
+    def copy_from_gpu(self, array):
+        if self.stream is None:
+            array[...] = self.array.get()
+        else:
+            ptr = array.ctypes.get_as_parameter()
+            self.array.data.copy_to_host_async(ptr, self.array.nbytes,
+                                               self.stream)
+
+    def synchronize(self):
+        if self.stream is not None:
+            self.stream.synchronize()
+
+
+class _StreamedMinibatchSet(MinibatchBase):
+    def __init__(self, streamedMinibatches):
+        self.streamedMinibatches = streamedMinibatches
+        self.n_parallel = len(self.streamedMinibatches)
         self.i = 0
-        self.minibatch = minibatch
-        self.size = len(array)
-        if shuffle_index is not None:
-            self._array = array[shuffle_index]
-            self.restore_index = xp.arange(self.size)[shuffle_index]
-        else:
-            self._array = array
-            self.restore_index = xp.arange(self.size)
 
-    @property
-    def array(self):
-        index = self.restore_index.argsort()
-        return self._array[index]
-
-    def shuffle(self, shuffle_index):
-        assertion.assert_shapes('array', self._array,
-                                'shuffle_index', shuffle_index, axes=[0])
-        self._array = self._array[shuffle_index]
-        self.restore_index = self.restore_index[shuffle_index]
-
-
-class SequentialMinibatchData(object):
-    def __init__(self, array, minibatch, semibatch=100, shuffle_index=None,
-                 needs_update=True):
-        """
-        Data with sequentiall memory transfer between cpu <-> gpu
-
-        array: array-like
-            Array to be minibatched.
-            The first dimension is considered as batch dimension.
-        minibatch: int
-            minibatch size
-        semibatch: int
-            How many minibatches to be transferred to GPU memory.
-            GPU memory should be larger than
-            minibatch * semibatch * n_parallel
-        shuffle_index: array-like
-            Index array.
-        needs_update: boolean
-            True if array should be updated. (i.e. parameter)
-        """
-        # TODO This still assumes array is in_memory.
-        # This should be improved by preserving shuffle_index
-        assertion.assert_shapes('array', array, 'shuffle_index', shuffle_index,
-                                axes=[0])
-        self.size = len(array)
-        if shuffle_index is not None:
-            self._array = array[shuffle_index]
-            self.restore_index = np.arange(self.size)[shuffle_index]
-        else:
-            self._array = array
-            self.restore_index = np.arange(self.size)
-
-        self.minibatch = minibatch
-        self.semibatch = semibatch
-        self.needs_update = needs_update
-
-        self.round = 0
-        self.n_round = int(len(array) / (self.minibatch * semibatch))
-
-        indexes = slice(0, minibatch * semibatch)
-        self.minibatch_data = MinibatchBase(
-            numpy_or_cupy.array(self._array[indexes]), minibatch)
-
-    @property
-    def shape(self):
-        return self._array.shape
-
-    @property
-    def dtype(self):
-        return self._array.dtype
-
-    @property
-    def array(self):
-        index = self.restore_index.argsort()
-        return self._array[index]
-
-    @property
-    def n_loop(self):
-        """ number of loops for one epoch """
-        return self.n_round * self.minibatch_data.n_loop
-
-    def shuffle(self, shuffle_index):
-        assertion.assert_shapes('array', self._array,
-                                'shuffle_index', shuffle_index, axes=[0])
-        self._array = self._array[shuffle_index]
-        self.restore_index = self.restore_index[shuffle_index]
+    def __getitem__(self, round_):
+        return self.streamedMinibatches[round_ % self.n_parallel]
 
     def reset(self):
-        self.minibatch_data.reset()
-        self.round = 0
-        self.send_to_gpu(self.round)
+        self.i = 0
 
     def __iter__(self):
         self.reset()
@@ -232,161 +202,115 @@ class SequentialMinibatchData(object):
         return self.next()
 
     def next(self):
-        try:
-            return self.minibatch_data.next()
-        except StopIteration:
-            # start writing data
-            if self.needs_update:
-                self.copy_from_gpu(self.round)
-
-            self.round += 1
-            if self.round >= self.n_round:
-                raise StopIteration()
-
-            # start reading data
-            self.send_to_gpu(self.round)
-
-            return self.minibatch_data.next()
-
-    def copy_from_gpu(self, round_):
-        mini_semibatch = self.minibatch * self.semibatch
-        indexes = slice(round_ * mini_semibatch,
-                        (round_ + 1) * mini_semibatch)
-        if numpy_or_cupy is np:
-            self._array[indexes] = self.minibatch_data.array
-        else:  # cupy case
-            self._array[indexes] = self.minibatch_data.array.get()
-
-    def send_to_gpu(self, round_):
-        mini_semibatch = self.minibatch * self.semibatch
-        indexes = slice(round_ * mini_semibatch,
-                        (round_ + 1) * mini_semibatch)
-        self.minibatch_data.reset()
-        self.minibatch_data.array = numpy_or_cupy.array(self._array[indexes])
+        if self.i >= self.n_parallel:
+            raise StopIteration()
+        st = self.streamedMinibatches[self.i]
+        self.i += 1
+        return st
 
 
-class ParallelMinibatchData(SequentialMinibatchData):
+class AsyncMinibatchData(MinibatchBase):
     """
     Data with sequentiall memory transfer between cpu <-> gpu
     """
-    def __init__(self, array, minibatch, semibatch=100,
-                 n_parallel=4, shuffle_index=None, needs_update=True):
+    def __init__(self, array, minibatch, n_parallel=3, shuffle_index=None,
+                 needs_update=True, use_stream=True):
         """
         array: array-like
             Array to be minibatched.
             The first dimension is considered as batch dimension.
         minibatch: int
             minibatch size
-        semibatch: int
-            How many minibatches to be transferred to GPU memory.
-            GPU memory should be larger than
-            minibatch * semibatch * n_parallel
         n_parallel: int
             How many parallel job to be used for memory transfer.
         shuffle_index: array-like
             Index array.
         needs_update: boolean
             True if array should be updated. (i.e. parameter)
+        use_stream: boolean
+            If False, cuda.stream is not used (just for the testing purpose.)
         """
         assertion.assert_shapes('array', array, 'shuffle_index', shuffle_index,
                                 axes=[0])
-        self.size = len(array)
+        if not has_cupy:
+            raise ImportError('AsyncMinibatchData needs cupy installed.')
+
+        # Constructing np.array from pinned_memory for async Memory transfer
+        pinned_array = np.frombuffer(cp.cuda.alloc_pinned_memory(
+                array.nbytes), array.dtype, array.size).reshape(array.shape)
+
         if shuffle_index is not None:
-            self._array = array[shuffle_index]
-            self.restore_index = np.arange(self.size)[shuffle_index]
+            pinned_array[...] = array[shuffle_index]
+            self.restore_index = np.arange(len(array))[shuffle_index]
         else:
-            self._array = array
-            self.restore_index = np.arange(self.size)
+            pinned_array[...] = array
+            self.restore_index = np.arange(len(array))
 
-        self.minibatch = minibatch
-        self.semibatch = semibatch
+        super(AsyncMinibatchData, self).__init__(pinned_array, minibatch)
+
         self.needs_update = needs_update
-
-        self.round = 0
-        self.n_round = int(len(array) / (self.minibatch * semibatch))
-
-        self.minibatch_data = []
-        self.threads = []
-        n_parallel = np.minimum(n_parallel, self.n_round)
-        for i in range(n_parallel):
-            indexes = slice(i * self.minibatch * semibatch,
-                            (i + 1) * self.minibatch * semibatch)
-            self.minibatch_data.append(
-                MinibatchBase(numpy_or_cupy.array(self._array[indexes]),
-                              minibatch))
-            self.threads.append(None)
-        self.n_parallel = n_parallel
-        self.send_first_data()
+        self.n_parallel = np.minimum(n_parallel, self.n_loop)
+        self.minibatchset = _StreamedMinibatchSet(
+            [_StreamedMinibatch(
+                cp.ndarray((self.minibatch, ) + self._array.shape[1:],
+                           dtype=self._array.dtype), use_stream)
+             for i in range(self.n_parallel)])
 
     @property
-    def n_loop(self):
-        """ number of loops for one epoch """
-        return self.n_round * self.minibatch_data[0].n_loop
+    def array(self):
+        index = self.restore_index.argsort()
+        return self._array[index]
 
     def shuffle(self, shuffle_index):
-        super(ParallelMinibatchData, self).shuffle(shuffle_index)
-        self.send_first_data()
+        # cp.ndarray index should be converted to np.ndarray
+        if get_array_module(shuffle_index) is cp:
+            shuffle_index = shuffle_index.get()
 
-    def send_first_data(self):
+        assertion.assert_shapes('array', self._array,
+                                'shuffle_index', shuffle_index, axes=[0])
+        array = self._array.copy()
+        array = array[shuffle_index]
+        self._array[...] = array
+        self.restore_index = self.restore_index[shuffle_index]
+
+    def __iter__(self):
+        self.reset()
+        self.minibatchset.reset()
+        # send the first data
         for i in range(self.n_parallel):
             self.send_to_gpu(i)
-
-    def reset(self):
-        self.round = 0
-        for i in range(self.n_parallel):
-            self.minibatch_data[i].reset()
-        self.send_first_data()
+        return self
 
     def next(self):
-        minibatch_index = self.round % self.n_parallel
-        try:
-            return self.minibatch_data[minibatch_index].next()
-        except StopIteration:
-            # start writing and sending data
-            self.threads[minibatch_index] = threading.Thread(
-                    target=self.copy_and_send, args=(self.round, ))
-            self.threads[minibatch_index].start()
+        if self.round > 0:
+            if self.needs_update:
+                self.copy_from_gpu(self.round - 1)
+            if self.round + self.n_parallel - 1 < self.n_loop:
+                # send data for the next round
+                self.send_to_gpu(self.round + self.n_parallel - 1)
 
-            self.round += 1
-            if self.round >= self.n_round:
-                self.round = 0
-                # Wait until all the copy and send finish
-                for th in self.threads:
-                    if th is not None:
-                        th.join()
-                raise StopIteration()
+        if self.round + 1 > self.n_loop:
+            # End iteration. Wait until all the copy and send finish.
+            for data in self.minibatchset:
+                data.synchronize()
+            raise StopIteration()
 
-            # wait until sending is finished
-            minibatch_index = self.round % self.n_parallel
-            if self.threads[minibatch_index] is not None:
-                self.threads[minibatch_index].join()
-            return self.minibatch_data[minibatch_index].next()
+        # wait until sending is finished
+        self.minibatchset[self.round].synchronize()
+        value = self.minibatchset[self.round].array
 
-    def copy_and_send(self, round_):
-        if self.needs_update:
-            self.copy_from_gpu(round_)
-        if round_ + self.n_parallel < self.n_round:
-            self.send_to_gpu(round_ + self.n_parallel)
+        self.round += 1
+        return value
 
     def copy_from_gpu(self, round_):
-        minibatch_index = round_ % self.n_parallel
-        mini_semibatch = self.minibatch * self.semibatch
-        indexes = slice(round_ * mini_semibatch,
-                        (round_ + 1) * mini_semibatch)
-        if numpy_or_cupy is np:
-            self._array[indexes] = self.minibatch_data[minibatch_index].array
-        else:  # cupy case
-            self._array[indexes] = \
-                            self.minibatch_data[minibatch_index].array.get()
+        indexes = slice(round_ * self.minibatch,
+                        (round_ + 1) * self.minibatch)
+        self.minibatchset[round_].copy_from_gpu(self._array[indexes])
 
     def send_to_gpu(self, round_):
-        minibatch_index = round_ % self.n_parallel
-        mini_semibatch = self.minibatch * self.semibatch
-        indexes = slice(round_ * mini_semibatch,
-                        (round_ + 1) * mini_semibatch)
-        self.minibatch_data[minibatch_index].reset()
-        self.minibatch_data[minibatch_index].array = numpy_or_cupy.array(
-                                                        self._array[indexes])
+        indexes = slice(round_ * self.minibatch,
+                        (round_ + 1) * self.minibatch)
+        self.minibatchset[round_].send_to_gpu(self._array[indexes])
 
 
 class NoneIterator(object):

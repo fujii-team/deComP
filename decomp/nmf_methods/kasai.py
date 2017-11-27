@@ -1,5 +1,4 @@
 import numpy as np
-from ..utils.data import SequentialMinibatchData
 from ..utils import assertion, normalize
 from ..utils.cp_compat import get_array_module
 from .grads import get_gradients
@@ -42,10 +41,7 @@ def solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
     """ Algorithm 1 in the paper
     y and x should be MinibatchData or SequentialMinibatchData
     """
-    if isinstance(y, SequentialMinibatchData):
-        index = np.arange(len(y.array))
-    else:  # MinibatchData
-        index = xp.arange(len(y.array))
+    index = xp.arange(len(y.array))
     rng.shuffle(index)
     y.shuffle(index)
     x.shuffle(index)
@@ -83,8 +79,6 @@ def solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
             Q = grad_D_neg + grad_D_pos_prev[k] + grad_D_neg_full
 
             D_new = D * ((1.0 - alpha) + alpha * P / xp.maximum(Q, _JITTER))
-            #St = alpha * D / xp.maximum(Q, _JITTER)
-            #D_new = D - St * (Q - P)
             D_new = normalize.l2_strict(xp.maximum(D_new, 0.0), axis=-1, xp=xp)
 
             if xp.max(xp.abs(D - D_new)) < tol:
