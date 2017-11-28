@@ -1,6 +1,6 @@
 # deComP
 [![Travis Status for fujii-team/deComP](https://travis-ci.org/fujii-team/deComP.svg?branch=master)](https://travis-ci.org/fujii-team/deComP)
-
+[![Coverage Status](https://coveralls.io/repos/github/fujii-team/deComP/badge.svg?branch=master)](https://coveralls.io/github/fujii-team/deComP?branch=master)
 
 Python Library for Large Scale Matrix Decomposition with GPU.
 
