@@ -136,7 +136,7 @@ class TestCase(unittest.TestCase):
         loss = self.error(x, alpha, mask)
         for _ in range(n):
             dx = self.randn(*x.shape) * tol
-            assert loss <= self.error(x + dx, alpha, mask) + self.tol, message
+            assert loss <= self.error(x + dx, alpha, mask) * (1.0 + self.tol), message
 
     def message(self, alpha, method):
         return '{0:s}, alpha: {1:f}'.format(method, alpha)
@@ -425,6 +425,20 @@ class TestLasso_bad_condition(TestCase):
                 assert it < 3000 - 1, self.message(alpha, method)
                 self.assert_minimum(x, alpha, tol=1.0e-5, mask=self.mask,
                                     message=self.message(alpha, method))
+
+
+class TestLasso_bad_condition2(TestCase):
+    def setUp(self):
+        self.rng = np.random.RandomState(0)
+        # The design matrix is highly correlated
+        self.A = self.randn(5, 10) + self.randn(10) * 0.3
+        x_true = self.randn(55) * xp.rint(self.uniform(size=55))
+        self.x_true = x_true.reshape(11, 5)
+        self.y = xp.dot(self.x_true,
+                        self.A) + self.randn(11, 10) * 0.1
+        v = self.uniform(0.4, 1.0, size=110).reshape(11, 10)
+        self.mask = xp.rint(v)
+        self.methods = list(lasso.AVAILABLE_METHODS)
 
 
 if __name__ == '__main__':

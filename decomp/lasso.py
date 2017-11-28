@@ -1,7 +1,7 @@
 import numpy as np
-from .utils.cp_compat import get_array_module, linalg_inv
+from .utils.cp_compat import get_array_module
 from .utils import assertion, dtype
-from .math_utils import eigen
+from .math_utils import eigen, linalg
 
 
 """
@@ -527,7 +527,7 @@ def _solve_admm(y, A, alpha, x, tol, maxiter, xp, rho=1.0):
 
     yAt = xp.tensordot(y, At, axes=1)
     AAt = xp.dot(A, At)
-    AAt_inv = linalg_inv(AAt + rho * xp.eye(AAt.shape[-1]))
+    AAt_inv = linalg.inv(AAt + rho * xp.eye(AAt.shape[-1]))
     alpha_over_rho = alpha / rho
     u = x.copy()
     z = x.copy()
@@ -563,7 +563,7 @@ def _solve_admm_mask(y, A, alpha, x, tol, maxiter, mask, xp, rho=1.0):
     tol = xp.expand_dims(tol, -2)
 
     AAt = xp.tensordot(xp.expand_dims(mask, -2) * A, At, axes=1)
-    AAt_inv = linalg_inv(AAt + rho * xp.eye(AAt.shape[-1]))
+    AAt_inv = linalg.inv(AAt + rho * xp.eye(AAt.shape[-1]))
     alpha_over_rho = alpha / rho
     u = x.copy()
     z = x.copy()
