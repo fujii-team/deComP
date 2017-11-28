@@ -33,7 +33,7 @@ install:
   - source activate test_env
   - python setup.py install
 script:
-  - py.test --verbose tests
+  - py.test --cov=decomp --verbose tests
 
 after_success:
   - coveralls
