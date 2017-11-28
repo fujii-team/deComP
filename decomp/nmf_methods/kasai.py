@@ -1,15 +1,14 @@
 import numpy as np
 from ..utils import assertion, normalize
 from ..utils.cp_compat import get_array_module
-from .grads import get_gradients
+from .grads import get_likelihood
 
 
 _JITTER = 1.0e-15
 
 
 def solve(y, D, x, tol, minibatch, maxiter, method,
-          likelihood, mask, rng, xp,
-          grad_x=None, grad_d=None, alpha=1.0, beta=0.5):
+          likelihood, mask, rng, xp, alpha=1.0, beta=0.5):
     """
     Kasai, H. (2017).
     Stochastic variance reduced multiplicative update for
@@ -17,9 +16,7 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
     https://arxiv.org/pdf/1710.10781.pdf
     """
     # mini-batch methods
-    gradients_x, gradients_d = get_gradients(likelihood, mask)
-    grad_x = gradients_x[likelihood] if grad_x is None else grad_x
-    grad_d = gradients_d[likelihood] if grad_d is None else grad_d
+    lik = get_likelihood(likelihood)
 
     if method == 'svrmu':
         iter_minibatch = 1
@@ -33,11 +30,11 @@ def solve(y, D, x, tol, minibatch, maxiter, method,
                                   'implemented.'.format(method))
     # with iter_minibatch
     return solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
-                       mask, rng, xp, grad_x, grad_d, alpha)
+                       mask, rng, xp, lik, alpha)
 
 
 def solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
-                mask, rng, xp, grad_x, grad_d, alpha):
+                mask, rng, xp, lik, alpha):
     """ Algorithm 1 in the paper
     y and x should be MinibatchData or SequentialMinibatchData
     """
@@ -55,8 +52,8 @@ def solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
         grad_D_pos_full = xp.zeros_like(D)
         grad_D_neg_full = xp.zeros_like(D)
         for y_minibatch, x_minibatch, mask_minibatch in zip(y, x, mask):
-            grad_D_pos, grad_D_neg = grad_d(y_minibatch, x_minibatch, D,
-                                            mask_minibatch, xp)
+            grad_D_pos, grad_D_neg = lik.grad_d(y_minibatch, x_minibatch, D,
+                                                mask_minibatch)
             grad_D_pos_full += grad_D_pos
             grad_D_neg_full += grad_D_neg
         grad_D_pos_full /= minibatch_num
@@ -66,14 +63,14 @@ def solve_svrmu(y, D, x, tol, minibatch, maxiter, iter_minibatch,
         for k, (y_minibatch, x_minibatch, mask_minibatch) in enumerate(
                                                             zip(y, x, mask)):
             for _ in range(iter_minibatch):
-                grad_x_pos, grad_x_neg = grad_x(
-                            y_minibatch, x_minibatch, D, mask_minibatch, xp)
+                grad_x_pos, grad_x_neg = lik.grad_x(
+                            y_minibatch, x_minibatch, D, mask_minibatch)
                 x_minibatch[:] = x_minibatch * xp.maximum(
                             grad_x_pos, 0.0) / xp.maximum(grad_x_neg, _JITTER)
 
             # update D
-            grad_D_pos, grad_D_neg = grad_d(y_minibatch, x_minibatch, D,
-                                            mask_minibatch, xp)
+            grad_D_pos, grad_D_neg = lik.grad_d(y_minibatch, x_minibatch, D,
+                                                mask_minibatch)
 
             P = grad_D_pos + grad_D_neg_prev[k] + grad_D_pos_full
             Q = grad_D_neg + grad_D_pos_prev[k] + grad_D_neg_full
