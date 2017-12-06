@@ -133,6 +133,9 @@ class Test_MinibatchData_with_shuffle(unittest.TestCase):
             self.two_loop()
 
     def test_write(self):
+        self.one_write()
+
+    def one_write(self):
         # make sure writing to array is possible
         for i, arr in enumerate(self.data):
             # wait to mimic heavy calculation
@@ -143,15 +146,31 @@ class Test_MinibatchData_with_shuffle(unittest.TestCase):
         for i, arr in enumerate(self.data):
             assert allclose(arr, xp.ones_like(arr) * i)
 
-    def test_shuffle(self):
+    def one_shuffle(self):
         assert not allclose(self.data._array, self.array)
         assert allclose(self.data.array, self.array)
 
         shuffle_index = xp.arange(len(self.shuffle_index))
         xp.random.shuffle(shuffle_index)
         self.data.shuffle(shuffle_index)
+        if (isinstance(self.shuffle_index, np.ndarray) and
+                hasattr(shuffle_index, 'get')):
+            self.shuffle_index = self.shuffle_index[shuffle_index.get()]
+        else:
+            self.shuffle_index = self.shuffle_index[shuffle_index]
         assert not allclose(self.data._array, self.array)
         assert allclose(self.data.array, self.array)
+
+        for _ in range(10):
+            self.one_loop()
+        for _ in range(10):
+            self.two_loop()
+
+    def test_shuffle(self):
+        self.one_shuffle()
+        self.one_shuffle()
+        self.one_shuffle()
+        self.one_write()
 
 
 @pytest.mark.skipif(not has_cupy, reason='Needs cupy installed.')

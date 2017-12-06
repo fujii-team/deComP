@@ -101,7 +101,7 @@ def solve(y, D, x=None, tol=1.0e-3, minibatch=None, maxiter=1000, method='mu',
         x = get_dataset(x, needs_update=True)
         y = get_dataset(y, needs_update=False)
         mask = get_dataset(mask, needs_update=False)
-        rng = np.random.RandomState(random_seed)
+        rng = xp.random.RandomState(random_seed)
 
     if method in ['asg-mu', 'gsg-mu', 'asag-mu', 'gsag-mu']:
         return serizel.solve(y, D, x, tol, minibatch, maxiter, method,
