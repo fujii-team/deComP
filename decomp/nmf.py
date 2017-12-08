@@ -2,7 +2,7 @@ import numpy as np
 from .utils.cp_compat import get_array_module
 from .utils.data import MinibatchData, NoneIterator, AsyncMinibatchData
 from .utils import assertion, normalize
-from .nmf_methods import batch_mu, serizel, kasai
+from .nmf_methods import batch_mu, serizel, kasai, grads
 
 
 BATCH_METHODS = ['mu']
