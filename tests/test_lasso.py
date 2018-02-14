@@ -281,6 +281,40 @@ class TestLassoMatrix_float32(TestLassoMatrix):
         self.mask = self.mask.astype(np.float32)
 
 
+class TestNnls(TestLasso):
+    def setUp(self):
+        self.rng = np.random.RandomState(0)
+        self.A = self.randn(5, 10)
+        self.x_true = np.maximum(self.randn(5), 0.0)
+        self.y = xp.dot(self.x_true,
+                        self.A) + self.randn(10) * 0.1
+        self.mask = xp.rint(self.uniform(0.4, 1, size=10))
+
+    def error(self, x, alpha, mask):
+        x = xp.maximum(x, 0.0)
+        if mask is None:
+            mask = xp.ones(self.y.shape, dtype=float_type(x.dtype))
+        alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
+        loss = xp.sum(0.5 / alpha * xp.square(xp.abs(
+                self.y - xp.tensordot(x, self.A, axes=1))) * mask)
+        return loss + xp.sum(xp.abs(x))
+
+    def test(self):
+        for alpha in [0.01, 0.1]:
+            for method in lasso.AVAILABLE_NNLS_METHODS:
+                self._test(alpha, method)
+
+    def test_mask(self):
+        for alpha in [0.01, 0.1]:
+            for method in lasso.AVAILABLE_NNLS_METHODS:
+                self._test_mask(alpha, method)
+
+    def test_mask1d(self):
+        for alpha in [0.001, 0.01]:
+            for method in lasso.AVAILABLE_NNLS_METHODS:
+                self._test_mask_1d(alpha, method)
+
+
 class TestLasso_equivalence(TestCase):
     """
     All the methods should get the global minimum.

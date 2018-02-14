@@ -11,6 +11,8 @@ http://niaohe.ise.illinois.edu/IE598/lasso_demo/index.html
 
 
 AVAILABLE_METHODS = ['ista', 'cd', 'acc_ista', 'fista', 'parallel_cd', 'admm']
+AVAILABLE_NNLS_METHODS = ['ista_pos', 'cd_pos', 'acc_ista_pos', 'fista_pos',
+                          'parallel_cd_pos', 'admm_pos']
 _JITTER = 1.0e-15
 
 
@@ -83,10 +85,11 @@ def solve(y, A, alpha, x=None, tol=1.0e-3, method='ista', maxiter=1000,
         assertion.assert_shapes('y', y, 'mask', mask, axes=[-1])
     else:
         assertion.assert_shapes('y', y, 'mask', mask)
-    if method not in AVAILABLE_METHODS:
+    if method not in AVAILABLE_METHODS + AVAILABLE_NNLS_METHODS:
         raise ValueError('Available methods are {0:s}. Given {1:s}'.format(
                             str(AVAILABLE_METHODS), method))
 
+    assert A.dtype.kind != 'c' or method[-4:] != '_pos'
     return solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=mask,
                           **kwargs)
 
@@ -109,6 +112,11 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
     A scaling
         We also scale A, so that [AAt]_i,i is 1.
     """
+    positive = False
+    if method[-4:] == '_pos':
+        method = method[:-4]
+        positive = True
+
     if mask is not None and mask.ndim == 1:
         y = y * mask
         A = A * mask
@@ -129,21 +137,23 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
             alpha = alpha * A.shape[-1]
         if method == 'ista':
             it, x = _solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                xp=xp)
+                                xp=xp, positive=positive)
         elif method == 'acc_ista':
             it, x = _solve_acc_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                    xp=xp)
+                                    xp=xp, positive=positive)
         elif method == 'fista':
             it, x = _solve_fista(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                 xp=xp)
+                                 xp=xp, positive=positive)
         elif method == 'cd':
-            it, x = _solve_cd(y, A, alpha, x, tol=tol, maxiter=maxiter, xp=xp)
+            it, x = _solve_cd(y, A, alpha, x, tol=tol, maxiter=maxiter, xp=xp,
+                              positive=positive)
         elif method == 'parallel_cd':
             it, x = _solve_parallel_cd(y, A, alpha, x, tol=tol,
-                                       maxiter=maxiter, xp=xp)
+                                       maxiter=maxiter, xp=xp,
+                                       positive=positive)
         elif method == 'admm':
             it, x = _solve_admm(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                xp=xp, rho=1.0, **kwargs)
+                                xp=xp, rho=1.0, positive=positive, **kwargs)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented.')
@@ -152,22 +162,25 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         alpha = alpha * xp.sum(mask, axis=-1, keepdims=True)
         if method == 'ista':
             it, x = _solve_ista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                     mask=mask, xp=xp)
+                                     mask=mask, xp=xp, positive=positive)
         elif method == 'acc_ista':
             it, x = _solve_acc_ista_mask(y, A, alpha, x, tol=tol,
-                                         maxiter=maxiter, mask=mask, xp=xp)
+                                         maxiter=maxiter, mask=mask, xp=xp,
+                                         positive=positive)
         elif method == 'fista':
             it, x = _solve_fista_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                      mask=mask, xp=xp)
+                                      mask=mask, xp=xp, positive=positive)
         elif method == 'cd':
             it, x = _solve_cd_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                   mask=mask, xp=xp)
+                                   mask=mask, xp=xp, positive=positive)
         elif method == 'parallel_cd':
             it, x = _solve_parallel_cd_mask(y, A, alpha, x, tol=tol,
-                                            maxiter=maxiter, mask=mask, xp=xp)
+                                            maxiter=maxiter, mask=mask, xp=xp,
+                                            positive=positive)
         elif method == 'admm':
             it, x = _solve_admm_mask(y, A, alpha, x, tol=tol, maxiter=maxiter,
-                                     mask=mask, xp=xp, rho=1.0, **kwargs)
+                                     mask=mask, xp=xp, rho=1.0,
+                                     positive=positive, **kwargs)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented with mask.')
@@ -211,6 +224,22 @@ def soft_threshold_complex(x, y, xp):
     return xp.maximum(abs_x - y, 0.0) * sign
 
 
+def soft_threshold_positive(x, y, xp):
+    """
+    jsoft-threasholding function for positive coefficients
+
+    x: a float array
+    y: positive float (array like)
+
+    Returns
+    -------
+    if x is complex (amplitude: r, angle: phi)
+        (r - y) * exp(1j * phi) if r > y
+        0 otherwise
+    """
+    return xp.maximum(x - y, 0.0)
+
+
 def _update_float(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
     dx = yAt - xp.tensordot(x0, AAt, axes=1)
     return soft_threshold_float(x0 + Lalpha_inv * dx, L_inv, xp)
@@ -219,6 +248,11 @@ def _update_float(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
 def _update_complex(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
     dx = yAt - xp.tensordot(x0, AAt, axes=1)
     return soft_threshold_complex(x0 + Lalpha_inv * dx, L_inv, xp)
+
+
+def _update_positive(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
+    dx = yAt - xp.tensordot(x0, AAt, axes=1)
+    return soft_threshold_positive(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
 def _update_float_mask(yAt, A, At, x0, Lalpha_inv, L_inv, mask, xp):
@@ -231,9 +265,17 @@ def _update_complex_mask(yAt, A, At, x0, Lalpha_inv, L_inv, mask, xp):
     return soft_threshold_complex(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
-def _solve_ista(y, A, alpha, x0, tol, maxiter, xp):
+def _update_positive_mask(yAt, A, At, x0, Lalpha_inv, L_inv, mask, xp):
+    dx = yAt - xp.tensordot(xp.tensordot(x0, A, axes=1) * mask, At, axes=1)
+    return soft_threshold_positive(x0 + Lalpha_inv * dx, L_inv, xp)
+
+
+def _solve_ista(y, A, alpha, x0, tol, maxiter, positive, xp):
     """ Fast path to solve lasso by ista method """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float
     else:
@@ -260,9 +302,12 @@ def mean_except_last(x, xp):
     return x
 
 
-def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, positive, xp):
     """ Fast path to solve lasso by ista method with missing value """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive_mask
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float_mask
     else:
@@ -282,9 +327,12 @@ def _solve_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0
 
 
-def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
+def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, positive, xp):
     """ Nesterovs' Accelerated Proximal Gradient """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float
     else:
@@ -308,9 +356,12 @@ def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
-def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, positive, xp):
     """ Fast path to solve lasso by ista method with missing value """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive_mask
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float_mask
     else:
@@ -333,9 +384,12 @@ def _solve_acc_ista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0
 
 
-def _solve_fista(y, A, alpha, x0, tol, maxiter, xp):
+def _solve_fista(y, A, alpha, x0, tol, maxiter, positive, xp):
     """ Fast path to solve lasso by fista method """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float
     else:
@@ -360,9 +414,12 @@ def _solve_fista(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
-def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, positive, xp):
     """ Fast path to solve lasso by fista method """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive_mask
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float_mask
     else:
@@ -387,12 +444,15 @@ def _solve_fista_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0_new
 
 
-def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
+def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, positive, xp):
     """
     Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
     Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
     """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float
     else:
@@ -406,7 +466,7 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     L_inv = alpha
     p = int(A.shape[0] / rho)  # number of parallel update
     if p <= 1:
-        return _solve_cd(y, A, alpha, x0, tol, maxiter, xp)
+        return _solve_cd(y, A, alpha, x0, tol, maxiter, positive, xp)
 
     yAt = xp.tensordot(y, At, axes=1)
     random_mask = xp.zeros(A.shape[0], dtype=dtype.float_type(y.dtype))
@@ -423,12 +483,15 @@ def _solve_parallel_cd(y, A, alpha, x0, tol, maxiter, xp):
     return maxiter - 1, x0
 
 
-def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
+def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, positive, xp):
     """
     Bradley, J. K., Kyrola, A., Bickson, D., & Guestrin, C. (n.d.).
     Parallel Coordinate Descent for L 1 -Regularized Loss Minimization.
     """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        updater = _update_positive_mask
+    elif A.dtype.kind != 'c':
         At = A.T
         updater = _update_float_mask
     else:
@@ -459,10 +522,13 @@ def _solve_parallel_cd_mask(y, A, alpha, x0, tol, maxiter, mask, xp):
     return maxiter - 1, x0
 
 
-def _solve_cd(y, A, alpha, x, tol, maxiter, xp):
+def _solve_cd(y, A, alpha, x, tol, maxiter, positive, xp):
     """ Fast path to solve lasso by coordinate descent """
     # Note that AAt is already normalized, i.e. AAt[i, i] == 1 for all i
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        soft_threshold = soft_threshold_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         soft_threshold = soft_threshold_float
     else:
@@ -485,10 +551,13 @@ def _solve_cd(y, A, alpha, x, tol, maxiter, xp):
     return maxiter - 1, x
 
 
-def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
+def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, positive, xp):
     """ Fast path to solve lasso by coordinate descent """
     # Note that AAt is already normalized, i.e. AAt[i, i] == 1 for all i
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        soft_threshold = soft_threshold_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         soft_threshold = soft_threshold_float
     else:
@@ -513,12 +582,15 @@ def _solve_cd_mask(y, A, alpha, x, tol, maxiter, mask, xp):
     return maxiter - 1, x
 
 
-def _solve_admm(y, A, alpha, x, tol, maxiter, xp, rho=1.0):
+def _solve_admm(y, A, alpha, x, tol, maxiter, positive, xp, rho=1.0):
     """ Fast path to solve lasso by admm.
     This is a python translation of
     http://stanford.edu/~boyd/papers/admm/lasso/lasso.html
     """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        soft_threshold = soft_threshold_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         soft_threshold = soft_threshold_float
     else:
@@ -544,13 +616,17 @@ def _solve_admm(y, A, alpha, x, tol, maxiter, xp, rho=1.0):
     return maxiter - 1, x
 
 
-def _solve_admm_mask(y, A, alpha, x, tol, maxiter, mask, xp, rho=1.0):
+def _solve_admm_mask(y, A, alpha, x, tol, maxiter, mask, positive, xp,
+                     rho=1.0):
     """ Fast path to solve lasso by admm.
     This is a modification of
     http://stanford.edu/~boyd/papers/admm/lasso/lasso.html
     to enable masking.
     """
-    if A.dtype.kind != 'c':
+    if positive:
+        At = A.T
+        soft_threshold = soft_threshold_positive
+    elif A.dtype.kind != 'c':
         At = A.T
         soft_threshold = soft_threshold_float
     else:
