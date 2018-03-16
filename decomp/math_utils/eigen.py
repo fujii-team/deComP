@@ -17,4 +17,4 @@ def spectral_radius_Gershgorin(X, xp, keepdims=False):
     X should be a matrix or batch of matrices, shape [..., n, n].
     The return shape is [..., 1]
     """
-    return xp.max(xp.sum(xp.abs(X), axis=-2), axis=-1, keepdims=True)
+    return xp.max(xp.sum(xp.abs(X), axis=-2), axis=-1, keepdims=keepdims)
