@@ -128,6 +128,7 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
     A = A / xp.expand_dims(AAt_diag_sqrt, axis=-1)
     alpha = alpha / AAt_diag_sqrt
     tol = tol * AAt_diag_sqrt
+    x = x * AAt_diag_sqrt
 
     if mask is None or mask.ndim == 1:
         # alpha scaling
