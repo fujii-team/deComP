@@ -4,12 +4,13 @@ from .utils import assertion, dtype
 from .math_utils import eigen
 
 
-AVAILABLE_METHODS = ['ista']
+AVAILABLE_METHODS = ['ista', 'acc_ista']
 _JITTER = 1.0e-15
 
 
 def predict(A, x):
-    return np.tensordot(x, A, axes=2)
+    xp = get_array_module(A, x)
+    return xp.tensordot(x, A, axes=2)
 
 
 def loss(y, A, alpha, x, mask=None):
@@ -26,16 +27,17 @@ def loss(y, A, alpha, x, mask=None):
     -------
     loss: float
     """
+    xp = get_array_module(A, x)
     n_samples = y.shape[-1]
     if mask is not None:
-        n_samples = np.sum(mask, axis=-1, keepdims=True)
+        n_samples = xp.sum(mask, axis=-1, keepdims=True)
 
-    xA = np.tensordot(x, A, axes=2)
+    xA = xp.tensordot(x, A, axes=2)
     axes = tuple(np.arange(x.ndim - 1))
-    x_abs = np.sqrt(np.real(np.sum(x * np.conj(x), axis=axes, keepdims=True)))
+    x_abs = xp.sqrt(xp.real(xp.sum(x * xp.conj(x), axis=axes, keepdims=True)))
 
-    fit_loss = np.sum((y - xA) * np.conj(y - xA)) / (2.0 * n_samples)
-    reg_loss = np.sum(alpha * x_abs)
+    fit_loss = xp.real(xp.sum((y - xA) * xp.conj(y - xA)) / (2.0 * n_samples))
+    reg_loss = xp.sum(alpha * x_abs)
     return fit_loss + reg_loss
 
 
@@ -132,6 +134,9 @@ def solve_fastpath(y, A, alpha, x, tol, maxiter, method, xp, mask=None,
         if method == 'ista':
             it, x = _solve_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
                                 xp=xp, positive=positive)
+        elif method == 'acc_ista':
+            it, x = _solve_acc_ista(y, A, alpha, x, tol=tol, maxiter=maxiter,
+                                    xp=xp, positive=positive)
         else:
             raise NotImplementedError('Method ' + method + ' is not yet '
                                       'implemented.')
@@ -156,14 +161,14 @@ def soft_threshold(x, y, xp):
         x + y if x < -y
         0 otherwise
     """
-    axes = tuple(xp.arange(x.ndim - 1))
-    x_abs = np.sqrt(np.real(xp.sum(x * xp.conj(x), axis=axes, keepdims=True)))
+    axes = tuple(np.arange(x.ndim - 1))
+    x_abs = xp.sqrt(xp.real(xp.sum(x * xp.conj(x), axis=axes, keepdims=True)))
     sign = x / xp.maximum(x_abs, _JITTER)
     return xp.maximum(x_abs - y, 0.0) * sign
 
 
 def _update(yAt, AAt, x0, Lalpha_inv, L_inv, xp):
-    dx = xp.swapaxes(yAt - np.tensordot(x0, AAt, axes=2), -1, -2)
+    dx = xp.swapaxes(yAt - xp.tensordot(x0, AAt, axes=2), -1, -2)
     return soft_threshold(x0 + Lalpha_inv * dx, L_inv, xp)
 
 
@@ -184,12 +189,39 @@ def _solve_ista(y, A, alpha, x, tol, maxiter, positive, xp):
     Lalpha_inv = 1.0 / radius
     L_inv = Lalpha_inv * alpha
 
-    yAt = np.tensordot(y, At, axes=1)  # [..., g, m]
+    yAt = xp.tensordot(y, At, axes=1)  # [..., g, m]
 
     for i in range(maxiter):
         x_new = updator(yAt, AAt, x, Lalpha_inv, L_inv, xp)
-        if np.max(xp.abs(x_new - x) - tol) < 0.0:
+        if xp.max(xp.abs(x_new - x) - tol) < 0.0:
             return i, x_new
         x = x_new
 
     return maxiter - 1, x
+
+
+def _solve_acc_ista(y, A, alpha, x0, tol, maxiter, positive, xp):
+    """ Nesterovs' Accelerated Proximal Gradient """
+    updator = _update_positive if positive else _update
+
+    At = xp.transpose(A, axes=(2, 1, 0))  # [n, g, m]
+    if A.dtype.kind == 'c':
+        At = xp.conj(At)
+    AAt = xp.tensordot(A, At, axes=1)  # [m, g, g, m]
+    AAt_flat = AAt.reshape(A.shape[0] * A.shape[1], -1)  # [m*g, g*m]
+    radius = eigen.spectral_radius_Gershgorin(AAt_flat, xp, keepdims=False)
+    Lalpha_inv = 1.0 / radius
+    L_inv = Lalpha_inv * alpha
+
+    yAt = xp.tensordot(y, At, axes=1)  # [..., g, m]
+
+    v = x0
+    x0_new = x0
+    for i in range(maxiter):
+        x0 = x0_new
+        x0_new = updator(yAt, AAt, v, Lalpha_inv, L_inv, xp=xp)
+        v = x0_new + i / (i + 3) * (x0_new - x0)
+
+        if i % 10 == 0 and xp.max(xp.abs(x0_new - x0) - tol) < 0.0:
+            return i, x0_new
+    return maxiter - 1, x0
